@@ -200,7 +200,7 @@ function pickFolder(initial) {
 }
 
 const routes = {
-  'GET /api/status': () => ({ version: paths.VERSION, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: { ...config, spotifyClientSecret: config.spotifyClientSecret ? '••••••' : '' } }),
+  'GET /api/status': () => ({ version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: { ...config, spotifyClientSecret: config.spotifyClientSecret ? '••••••' : '' } }),
 
   'POST /api/config': (body) => {
     for (const k of Object.keys(DEFAULT_CONFIG)) {
@@ -394,22 +394,44 @@ if (paths.IS_PACKAGED) {
 // Status der Werkzeug-Einrichtung regelmäßig an die Oberfläche senden
 setInterval(() => broadcast('tools', tools.getStatus()), 1000).unref();
 
-const URL_BASE = `http://localhost:${PORT}`;
+let port = PORT;
+let URL_BASE = `http://localhost:${port}`;
+let quitAttempts = 0;
 
-// Läuft das Programm schon? Dann nur den Browser öffnen.
+// Port belegt: Wer läuft dort?
+//  - dieselbe Version derselben Art (installiert/Entwicklung) → nur Browser öffnen und beenden
+//  - eine andere installierte Version → diese beenden und den Port übernehmen
+//  - Entwicklungsserver, fremdes Programm o. Ä. → auf den nächsten Port ausweichen
 server.on('error', async (e) => {
-  if (e.code === 'EADDRINUSE') {
-    try {
-      await fetch(URL_BASE + '/api/status');
-      if (!process.argv.includes('--no-browser')) openBrowser(URL_BASE);
-      return process.exit(0);
-    } catch {}
-    console.error(`Port ${PORT} ist von einem anderen Programm belegt.`);
-  } else console.error(e.stack || e);
-  process.exit(1);
+  if (e.code !== 'EADDRINUSE') {
+    console.error(e.stack || e);
+    process.exit(1);
+  }
+  let other = null;
+  try {
+    other = await (await fetch(`http://localhost:${port}/api/status`, { signal: AbortSignal.timeout(3000) })).json();
+  } catch {}
+  if (other && other.version === paths.VERSION && !!other.packaged === paths.IS_PACKAGED) {
+    if (!process.argv.includes('--no-browser')) openBrowser(`http://localhost:${port}`);
+    return process.exit(0);
+  }
+  if (other && other.packaged && paths.IS_PACKAGED && quitAttempts < 3) {
+    quitAttempts++;
+    console.log(`Beende ältere Version ${other.version} auf Port ${port}`);
+    await fetch(`http://localhost:${port}/api/quit`, { method: 'POST', body: '{}' }).catch(() => {});
+    return setTimeout(() => server.listen(port, '127.0.0.1'), 1500);
+  }
+  if (port >= PORT + 10) {
+    console.error(`Kein freier Port zwischen ${PORT} und ${port} gefunden.`);
+    process.exit(1);
+  }
+  console.log(`Port ${port} belegt (${other ? 'andere Instanz ' + other.version : 'fremdes Programm'}) – weiche aus`);
+  port++;
+  server.listen(port, '127.0.0.1');
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(port, '127.0.0.1', () => {
+  URL_BASE = `http://localhost:${port}`;
   console.log(`Spotify → YouTube Downloader ${paths.VERSION} läuft auf ${URL_BASE}`);
   if (process.argv.includes('--updated')) {
     // Nach einem Update verbindet sich der offene Tab neu – nur falls keiner da ist, Browser öffnen
