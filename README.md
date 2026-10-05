@@ -22,6 +22,16 @@ Beim ersten Start werden `yt-dlp` und `ffmpeg` automatisch nach `bin/` herunterg
 Jeder Titel wird parallel auf YouTube Music und YouTube gesucht. Die Kandidaten werden bewertet nach Titel, Interpret, Dauer und „Topic“-Kanal. Remix-, Live-, Cover- und „Sped up“-Versionen werden abgewertet, wenn das Original sie nicht enthält.
 Ist kein Treffer eindeutig, wird **nichts** heruntergeladen. Der Download steht dann auf **„Auswahl nötig“**, und unter „Auswählen“ erscheinen Spotify- und YouTube-Vorschläge sowie eine eigene Suche. In der Titelliste zeigt „Treffer prüfen“ das vorab an.
 
+## Duplikate finden
+
+Oben auf **🔁 Duplikate** umschalten, einen oder mehrere Ordner hinzufügen und auf **Duplikate suchen** klicken. Die Unterordner werden mitdurchsucht.
+
+- **Identische Dateien** werden über eine Prüfsumme erkannt, auch bei anderem Dateinamen.
+- **Derselbe Song in unterschiedlichen Dateien** wird über Interpret und Titel aus den Tags oder dem Dateinamen erkannt, z. B. MP3 und M4A oder unterschiedliche Bitraten. Remixes und Live-Versionen bleiben eigene Songs. Abschaltbar.
+- Pro Gruppe stehen alle Dateien mit Pfad ab dem durchsuchten Ordner, Format, Bitrate, Dauer, Größe und Datum. Die beste Qualität ist mit ★ markiert.
+- Mit ▶ kannst du probehören, mit 📂 die Datei im Explorer anzeigen.
+- Gelöscht wird nur, was du selbst markierst, und zwar in den **Papierkorb**. „Alle außer ★ markieren“ hilft beim Vormarkieren.
+
 ## Einstellungen (⚙)
 
 - **Download-Ordner**: frei wählbar per „Durchsuchen …“ oder „Ändern …“ im Download-Bereich, optional mit Unterordner pro Playlist

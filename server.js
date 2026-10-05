@@ -10,6 +10,7 @@ const { parseTxt } = require('./lib/parse');
 const spotify = require('./lib/spotify');
 const yt = require('./lib/youtube');
 const updater = require('./lib/updater');
+const dups = require('./lib/duplicates');
 
 const PORT = Number(process.env.PORT) || 3456;
 const CONFIG_FILE = path.join(paths.APP_DIR, 'config.json');
@@ -41,6 +42,8 @@ const DEFAULT_CONFIG = {
   askOnUncertain: true,
   spotifyClientId: '',
   spotifyClientSecret: '',
+  dupFolders: [],
+  dupBySong: true,
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -199,6 +202,28 @@ function pickFolder(initial) {
   });
 }
 
+let dupScan = { running: false, cancelled: false, files: new Set() };
+
+// Spielt eine Datei aus dem Duplikat-Ergebnis ab (mit Range-Unterstützung zum Spulen)
+function streamDupFile(req, res, file) {
+  if (!dupScan.files.has(file) || !fs.existsSync(file)) {
+    res.writeHead(404);
+    return res.end();
+  }
+  const size = fs.statSync(file).size;
+  const types = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.opus': 'audio/ogg', '.webm': 'audio/webm' };
+  const type = types[path.extname(file).toLowerCase()] || 'application/octet-stream';
+  const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
+  if (m) {
+    const start = m[1] ? Number(m[1]) : 0;
+    const end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    res.writeHead(206, { 'Content-Type': type, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1 });
+    return fs.createReadStream(file, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { 'Content-Type': type, 'Content-Length': size, 'Accept-Ranges': 'bytes' });
+  fs.createReadStream(file).pipe(res);
+}
+
 const routes = {
   'GET /api/status': () => ({ version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: { ...config, spotifyClientSecret: config.spotifyClientSecret ? '••••••' : '' } }),
 
@@ -323,6 +348,38 @@ const routes = {
     return { ok: true };
   },
 
+  // ---------- Duplikate ----------
+  'POST /api/dups/scan': async (body) => {
+    if (dupScan.running) throw new Error('Es läuft bereits eine Suche');
+    const folders = (body.folders || []).map((p) => String(p).trim()).filter(Boolean);
+    if (!folders.length) throw new Error('Bitte mindestens einen Ordner hinzufügen');
+    config.dupFolders = folders;
+    config.dupBySong = body.bySong !== false;
+    saveConfig();
+    dupScan = { running: true, cancelled: false, files: new Set() };
+    try {
+      const res = await dups.scan(folders, { bySong: config.dupBySong }, (p) => broadcast('dups', p), () => dupScan.cancelled);
+      dupScan.files = res.files;
+      return { groups: res.groups, stats: res.stats };
+    } finally {
+      dupScan.running = false;
+    }
+  },
+
+  'POST /api/dups/cancel': () => {
+    dupScan.cancelled = true;
+    return { ok: true };
+  },
+
+  'POST /api/dups/delete': async (body) => {
+    // Nur Dateien aus dem letzten Suchergebnis dürfen gelöscht werden
+    const list = (body.paths || []).filter((p) => dupScan.files.has(p));
+    if (!list.length) throw new Error('Keine gültigen Dateien ausgewählt');
+    const res = await dups.moveToRecycleBin(list);
+    for (const p of res.deleted) dupScan.files.delete(p);
+    return res;
+  },
+
   'POST /api/quit': () => {
     setTimeout(shutdown, 300);
     return { ok: true };
@@ -352,6 +409,8 @@ const server = http.createServer(async (req, res) => {
     req.on('close', () => clients.delete(res));
     return;
   }
+
+  if (url.pathname === '/api/dups/file') return streamDupFile(req, res, url.searchParams.get('path') || '');
 
   const route = routes[`${req.method} ${url.pathname}`];
   if (route) {

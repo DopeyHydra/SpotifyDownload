@@ -17,6 +17,10 @@
         <span id="version" class="pill"></span>
       </div>
     </div>
+    <nav class="views">
+      <button class="view active" data-view="dl">⬇ Downloader</button>
+      <button class="view" data-view="dups">🔁 Duplikate</button>
+    </nav>
     <div class="header-actions">
       <button class="ghost" id="btnOpenFolder" title="Download-Ordner öffnen">📁 Ordner</button>
       <button class="ghost" id="btnSettings" title="Einstellungen">⚙ Einstellungen</button>
@@ -131,7 +135,28 @@
       <div id="overall" class="progress big"><div></div></div>
       <ul id="jobList"><li class="empty">Noch keine Downloads.</li></ul>
     </section>
+
+    <section class="card" id="dupCard">
+      <div class="list-head"><h2>Doppelte Songs finden</h2></div>
+      <p class="hint" style="margin-top:-6px">Durchsucht die Ordner samt Unterordnern. Es wird nichts automatisch gelöscht – du wählst selbst aus, was in den Papierkorb soll.</p>
+      <div id="dupFolders" class="folder-list"></div>
+      <form class="row" id="formDupFolder">
+        <input id="dupFolderInput" placeholder="Ordnerpfad eingeben, z. B. D:\Musik" />
+        <button type="button" id="btnDupBrowse">Durchsuchen …</button>
+        <button type="submit">Hinzufügen</button>
+      </form>
+      <label class="check dup-option"><input type="checkbox" id="dupBySong" checked />
+        Auch denselben Song in unterschiedlichen Dateien finden (z. B. MP3 und M4A, andere Bitrate, anderer Dateiname) – sonst nur exakt identische Dateien</label>
+      <div class="row dup-run">
+        <button class="primary" id="btnDupScan">🔍 Duplikate suchen</button>
+        <button class="ghost" id="btnDupCancel" hidden>Abbrechen</button>
+        <span id="dupPhase" class="muted"></span>
+      </div>
+      <div id="dupProgress" class="progress" hidden><div></div></div>
+      <div id="dupResult"></div>
+    </section>
   </main>
+  <audio id="dupAudio" preload="none"></audio>
 
   <dialog id="settings">
     <form method="dialog" id="formSettings">

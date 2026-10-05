@@ -398,6 +398,7 @@ function connect() {
     scheduleRender();
   });
   es.addEventListener('tools', (e) => setToolStatus(JSON.parse(e.data)));
+  es.addEventListener('dups', (e) => onDupProgress(JSON.parse(e.data)));
   es.addEventListener('update', (e) => renderUpdate(JSON.parse(e.data)));
   es.onopen = () => {
     // Nach einem Update läuft eine neue Version → Seite neu laden, damit die neue Oberfläche erscheint
@@ -652,3 +653,215 @@ $('#btnCheckUpdate').addEventListener('click', (e) =>
     } else res.textContent = 'Du hast die neueste Version.';
   }),
 );
+
+// ---------- Ansichten (Downloader / Duplikate) ----------
+
+$$('.view').forEach((b) =>
+  b.addEventListener('click', () => {
+    $$('.view').forEach((v) => v.classList.toggle('active', v === b));
+    document.body.classList.toggle('view-dups', b.dataset.view === 'dups');
+    if (b.dataset.view !== 'dups') $('#dupAudio').pause();
+  }),
+);
+
+// ---------- Duplikate ----------
+
+let dupFolders = [];
+let dupData = null; // { groups, stats }
+const dupMarked = new Set();
+let dupOnlyIdentical = false;
+
+function fmtSize(bytes) {
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+  return Math.max(1, Math.round(bytes / 1e3)) + ' KB';
+}
+
+function renderDupFolders() {
+  $('#dupFolders').innerHTML = dupFolders.length
+    ? dupFolders.map((f, i) => `<span class="folder-chip">📁 ${esc(f)}<button data-i="${i}" title="Entfernen">✕</button></span>`).join('')
+    : '<span class="muted" style="font-size:13px">Noch keine Ordner – füge einen oder mehrere hinzu.</span>';
+}
+
+function addDupFolder(p) {
+  p = (p || '').trim().replace(/^"|"$/g, '');
+  if (!p) return;
+  if (dupFolders.some((f) => f.toLowerCase() === p.toLowerCase())) return toast('Ordner ist schon in der Liste');
+  dupFolders.push(p);
+  renderDupFolders();
+}
+
+$('#dupFolders').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-i]');
+  if (!b) return;
+  dupFolders.splice(Number(b.dataset.i), 1);
+  renderDupFolders();
+});
+$('#formDupFolder').addEventListener('submit', (e) => {
+  e.preventDefault();
+  addDupFolder($('#dupFolderInput').value);
+  $('#dupFolderInput').value = '';
+});
+$('#btnDupBrowse').addEventListener('click', (e) =>
+  busy(e.currentTarget, async () => {
+    const { path } = await api('/api/pick-folder', {});
+    if (path) addDupFolder(path);
+  }),
+);
+
+$('#btnDupScan').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (!dupFolders.length) return toast('Bitte zuerst einen Ordner hinzufügen', true);
+  btn.disabled = true;
+  $('#btnDupCancel').hidden = false;
+  $('#dupProgress').hidden = false;
+  $('#dupProgress').classList.add('indet');
+  $('#dupPhase').textContent = 'Starte …';
+  $('#dupResult').innerHTML = '';
+  dupMarked.clear();
+  try {
+    dupData = await api('/api/dups/scan', { folders: dupFolders, bySong: $('#dupBySong').checked });
+    renderDups();
+    $('#dupPhase').textContent = `${dupData.stats.scanned} Dateien durchsucht`;
+  } catch (err) {
+    $('#dupPhase').textContent = '';
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+    $('#btnDupCancel').hidden = true;
+    $('#dupProgress').hidden = true;
+  }
+});
+$('#btnDupCancel').addEventListener('click', () => api('/api/dups/cancel', {}));
+
+function onDupProgress(p) {
+  const bar = $('#dupProgress');
+  bar.classList.toggle('indet', !p.total);
+  bar.firstElementChild.style.width = p.total ? (p.done / p.total) * 100 + '%' : '';
+  $('#dupPhase').textContent = p.total ? `${p.phase} … ${p.done} / ${p.total}` : `${p.phase} …`;
+}
+
+function dupFileRow(f, g, fi) {
+  const twin = !g.identical && f.hash && g.files.some((o) => o !== f && o.hash === f.hash);
+  const marked = dupMarked.has(f.path);
+  const quality = [f.ext.toUpperCase(), f.bitrate ? f.bitrate + ' kbit/s' : ''].filter(Boolean).join(' · ');
+  const tags = [f.artist, f.title].filter(Boolean).join(' – ');
+  return `<tr class="${marked ? 'marked' : ''}">
+    <td><input type="checkbox" class="dupchk" data-path="${esc(f.path)}" ${marked ? 'checked' : ''} title="Zum Löschen markieren"></td>
+    <td><button class="small ghost" data-play="${esc(f.path)}" title="Anhören">▶</button></td>
+    <td class="path" title="${esc(f.path)}"><span>${esc(f.rel)}</span>${fi === 0 ? '<span class="best">★ beste Qualität</span>' : ''}${twin ? '<span class="badge" style="margin-left:6px">identische Kopie</span>' : ''}<br><span class="sub">${esc(tags)}</span></td>
+    <td class="num">${quality}</td>
+    <td class="num">${fmtDur(f.duration)}</td>
+    <td class="num">${fmtSize(f.size)}</td>
+    <td class="num hide-sm">${new Date(f.mtime).toLocaleDateString('de-DE')}</td>
+    <td><button class="small ghost" data-show="${esc(f.path)}" title="Im Explorer zeigen">📂</button></td>
+  </tr>`;
+}
+
+function renderDups() {
+  const box = $('#dupResult');
+  if (!dupData) return (box.innerHTML = '');
+  const { stats } = dupData;
+  const groups = dupData.groups.filter((g) => !dupOnlyIdentical || g.identical);
+  if (!dupData.groups.length) {
+    box.innerHTML = `<p class="muted" style="margin-top:14px">Keine Duplikate gefunden (${stats.scanned} Dateien durchsucht). 🎉</p>`;
+    return;
+  }
+  const markedSize = dupData.groups.flatMap((g) => g.files).filter((f) => dupMarked.has(f.path)).reduce((s, f) => s + f.size, 0);
+  box.innerHTML = `
+    <div class="dup-toolbar">
+      <span class="stats"><strong>${stats.groups}</strong> ${stats.groups === 1 ? 'Gruppe' : 'Gruppen'} · <strong>${stats.duplicates}</strong> doppelte Dateien · bis zu <strong>${fmtSize(stats.wasted)}</strong> einsparbar</span>
+      <label><input type="checkbox" id="dupOnlyIdentical" ${dupOnlyIdentical ? 'checked' : ''}> nur identische</label>
+      <button class="small" id="btnDupAutoMark" title="Markiert in jeder Gruppe alle Dateien außer der mit der besten Qualität">Alle außer ★ markieren</button>
+      <button class="small ghost" id="btnDupUnmark">Markierung aufheben</button>
+      <button class="small danger" id="btnDupDelete" ${dupMarked.size ? '' : 'disabled'}>🗑 ${dupMarked.size} Dateien (${fmtSize(markedSize)}) in Papierkorb</button>
+    </div>
+    ${groups.map((g, gi) => {
+      const allMarked = g.files.every((f) => dupMarked.has(f.path));
+      return `<div class="dup-group">
+        <div class="dup-head">
+          <strong>${esc(g.label)}</strong>
+          <span class="badge ${g.identical ? 'same' : ''}">${g.identical ? 'identische Dateien' : 'gleicher Song'}</span>
+          ${g.durationMismatch ? '<span class="badge warn" title="Evtl. unterschiedliche Versionen – vorher anhören">Dauer weicht ab</span>' : ''}
+          ${allMarked ? '<span class="badge warn">⚠ alle Dateien markiert</span>' : ''}
+        </div>
+        <div class="table-wrap" style="max-height:none"><table><tbody>${g.files.map((f, fi) => dupFileRow(f, g, fi)).join('')}</tbody></table></div>
+      </div>`;
+    }).join('')}`;
+}
+
+$('#dupResult').addEventListener('change', (e) => {
+  if (e.target.id === 'dupOnlyIdentical') {
+    dupOnlyIdentical = e.target.checked;
+    return renderDups();
+  }
+  if (!e.target.classList.contains('dupchk')) return;
+  const p = e.target.dataset.path;
+  if (e.target.checked) dupMarked.add(p);
+  else dupMarked.delete(p);
+  renderDups();
+});
+
+$('#dupResult').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.play !== undefined) return toggleDupPlay(b.dataset.play, b);
+  if (b.dataset.show !== undefined) return api('/api/open', { path: b.dataset.show }).catch((err) => toast(err.message, true));
+  if (b.id === 'btnDupAutoMark') {
+    for (const g of dupData.groups) if (!dupOnlyIdentical || g.identical) g.files.slice(1).forEach((f) => dupMarked.add(f.path));
+    return renderDups();
+  }
+  if (b.id === 'btnDupUnmark') {
+    dupMarked.clear();
+    return renderDups();
+  }
+  if (b.id === 'btnDupDelete') {
+    const fullyMarked = dupData.groups.filter((g) => g.files.every((f) => dupMarked.has(f.path))).length;
+    const msg = `${dupMarked.size} Dateien in den Papierkorb verschieben?` +
+      (fullyMarked ? `\n\n⚠ Bei ${fullyMarked} Song(s) sind ALLE Dateien markiert – davon bleibt dann keine Kopie übrig.` : '');
+    if (!confirm(msg)) return;
+    $('#dupAudio').pause();
+    await busy(b, async () => {
+      const res = await api('/api/dups/delete', { paths: [...dupMarked] });
+      const gone = new Set(res.deleted);
+      gone.forEach((p) => dupMarked.delete(p));
+      for (const g of dupData.groups) g.files = g.files.filter((f) => !gone.has(f.path));
+      dupData.groups = dupData.groups.filter((g) => g.files.length > 1);
+      dupData.stats.groups = dupData.groups.length;
+      dupData.stats.duplicates = dupData.groups.reduce((s, g) => s + g.files.length - 1, 0);
+      dupData.stats.wasted = dupData.groups.reduce((s, g) => s + g.files.slice(1).reduce((t, f) => t + f.size, 0), 0);
+      renderDups();
+      if (res.failed.length) toast(`${res.deleted.length} gelöscht, ${res.failed.length} fehlgeschlagen: ${res.failed[0].error}`, true);
+      else toast(`${res.deleted.length} Dateien in den Papierkorb verschoben`);
+    });
+  }
+});
+
+let dupPlaying = null;
+function toggleDupPlay(file, btn) {
+  const audio = $('#dupAudio');
+  $$('[data-play]').forEach((x) => (x.textContent = '▶'));
+  if (dupPlaying === file && !audio.paused) {
+    audio.pause();
+    dupPlaying = null;
+    return;
+  }
+  dupPlaying = file;
+  audio.src = '/api/dups/file?path=' + encodeURIComponent(file);
+  audio.play().catch(() => toast('Datei kann im Browser nicht abgespielt werden', true));
+  btn.textContent = '⏸';
+}
+$('#dupAudio').addEventListener('ended', () => {
+  dupPlaying = null;
+  $$('[data-play]').forEach((x) => (x.textContent = '▶'));
+});
+
+// Gespeicherte Ordner und Option laden (Standard: Download-Ordner)
+api('/api/status')
+  .then(({ config }) => {
+    dupFolders = config.dupFolders?.length ? config.dupFolders : [config.outputDir];
+    $('#dupBySong').checked = config.dupBySong !== false;
+    renderDupFolders();
+  })
+  .catch(() => renderDupFolders());
+if (location.hash === '#duplikate') document.querySelector('.view[data-view="dups"]').click();

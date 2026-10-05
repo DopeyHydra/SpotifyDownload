@@ -198,6 +198,42 @@ legend { font-weight: 600; padding: 0 4px; }
 .update-check { align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; }
 .update-check > span { flex: 1; min-width: 200px; }
 
+/* ---------- Ansichten ---------- */
+.views { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 10px; }
+.view { border: none; background: transparent; color: var(--muted); padding: 6px 12px; }
+.view.active { background: var(--card); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+body.view-dups main > section:not(#dupCard) { display: none; }
+body:not(.view-dups) #dupCard { display: none; }
+
+/* ---------- Duplikate ---------- */
+.folder-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.folder-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 4px 4px 10px; font-size: 12.5px; word-break: break-all; }
+.folder-chip button { padding: 0 6px; border: none; background: transparent; color: var(--muted); }
+.dup-option { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0; font-size: 13px; }
+.dup-option input { width: auto; margin-top: 3px; }
+.dup-run { align-items: center; }
+#dupProgress { margin-top: 10px; }
+.dup-toolbar {
+  position: sticky; top: 64px; z-index: 3; background: var(--card); display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 0; margin-top: 14px; border-bottom: 1px solid var(--border);
+}
+.dup-toolbar .stats { flex: 1; min-width: 220px; font-size: 13px; }
+.dup-toolbar label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.dup-toolbar label input { width: auto; }
+.dup-group { border: 1px solid var(--border); border-radius: 10px; margin-top: 12px; overflow: hidden; }
+.dup-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--bg); }
+.dup-head strong { flex: 1; min-width: 160px; }
+.badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
+.badge.same { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.badge.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.dup-group table td { font-size: 12.5px; }
+.dup-group td.path { word-break: break-all; min-width: 220px; }
+.dup-group td.path .sub { color: var(--muted); font-size: 11.5px; }
+.dup-group tr.marked td { background: color-mix(in srgb, var(--danger) 9%, transparent); }
+.dup-group tr.marked td.path span:first-child { text-decoration: line-through; text-decoration-color: var(--danger); }
+.best { color: var(--accent); font-size: 11px; font-weight: 600; margin-left: 6px; }
+button.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
+
 @media (max-width: 700px) {
   header { flex-wrap: wrap; padding: 12px 16px; }
   .hide-sm { display: none; }
