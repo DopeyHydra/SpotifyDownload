@@ -15,6 +15,8 @@ const DIST = path.join(ROOT, 'dist');
 const APP = path.join(DIST, 'app');
 const EXE = path.join(APP, 'SpotifyDownloader.exe');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+// Nur für Tests: andere Versionsnummer erzwingen (BUILD_VERSION=1.0.9 npm run build)
+if (process.env.BUILD_VERSION) pkg.version = process.env.BUILD_VERSION;
 
 const step = (msg) => console.log(`\n▶ ${msg}`);
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'inherit', cwd: ROOT });
@@ -35,6 +37,7 @@ await (await import('esbuild')).build({
   format: 'cjs',
   target: 'node24',
   outfile: path.join(OUT, 'app.cjs'),
+  define: { 'process.env.APP_VERSION': JSON.stringify(pkg.version) },
   logLevel: 'warning',
 });
 

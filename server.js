@@ -9,6 +9,7 @@ const tools = require('./lib/tools');
 const { parseTxt } = require('./lib/parse');
 const spotify = require('./lib/spotify');
 const yt = require('./lib/youtube');
+const updater = require('./lib/updater');
 
 const PORT = Number(process.env.PORT) || 3456;
 const CONFIG_FILE = path.join(paths.APP_DIR, 'config.json');
@@ -82,7 +83,11 @@ function pump() {
     if (!job) return;
     running++;
     processJob(job)
-      .catch((e) => update(job, { status: 'error', error: e.message }))
+      .catch((e) => {
+        // Fehlgeschlagene Quelle merken, damit sie bei der nächsten Auswahl nicht wieder genommen wird
+        const failedIds = job.videoId && !job.failedIds?.includes(job.videoId) ? [...(job.failedIds || []), job.videoId] : job.failedIds;
+        update(job, { status: 'error', error: e.message, failedIds });
+      })
       .finally(() => {
         running--;
         job.kill = null;
@@ -101,8 +106,10 @@ async function processJob(job) {
   let videoId = t.videoId;
   if (!videoId) {
     update(job, { status: 'searching' });
-    const candidates = await yt.searchCandidates(t, config);
+    const failed = new Set(job.failedIds || []);
+    const candidates = (await yt.searchCandidates(t, config)).filter((c) => !failed.has(c.id));
     if (job.status === 'cancelled') return;
+    job.candidates = candidates.slice(0, 8);
     const best = candidates[0];
     if (!best || (best.score < yt.MIN_SCORE && config.askOnUncertain && !job.auto)) {
       // Nicht eindeutig gefunden → Nutzer wählt aus Spotify-/YouTube-Vorschlägen
@@ -114,7 +121,7 @@ async function processJob(job) {
     update(job, { match: { id: videoId, title: t.videoTitle || videoId, url: `https://www.youtube.com/watch?v=${videoId}` } });
   }
 
-  update(job, { status: 'downloading', progress: 0 });
+  update(job, { status: 'downloading', progress: 0, videoId });
   const dl = yt.downloadAudio({ videoId, dir, base, format: config.format, quality: config.quality }, (ev) => {
     if (ev.type === 'progress' && Math.abs(ev.value - (job.progress || 0)) >= 2) update(job, { progress: ev.value });
     if (ev.type === 'stage' && job.status !== 'converting') update(job, { status: 'converting', progress: 100 });
@@ -193,7 +200,7 @@ function pickFolder(initial) {
 }
 
 const routes = {
-  'GET /api/status': () => ({ tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: { ...config, spotifyClientSecret: config.spotifyClientSecret ? '••••••' : '' } }),
+  'GET /api/status': () => ({ version: paths.VERSION, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: { ...config, spotifyClientSecret: config.spotifyClientSecret ? '••••••' : '' } }),
 
   'POST /api/config': (body) => {
     for (const k of Object.keys(DEFAULT_CONFIG)) {
@@ -269,7 +276,7 @@ const routes = {
           j.track = { ...j.track, videoId: body.videoId };
           j.match = null;
         }
-        update(j, { status: 'queued', progress: 0, error: null });
+        update(j, { status: 'queued', progress: 0, error: null, videoId: null });
       }
     }
     pump();
@@ -296,12 +303,25 @@ const routes = {
     if (body.videoId) Object.assign(track, { videoId: body.videoId, videoTitle: body.videoTitle });
     else delete track.videoId;
     // Nach einer Spotify-Auswahl den besten YouTube-Treffer ohne erneute Rückfrage nehmen
-    update(j, { track, auto: true, match: null, candidates: null, status: 'queued', progress: 0, error: null });
+    update(j, { track, auto: true, match: null, videoId: null, status: 'queued', progress: 0, error: null });
     pump();
     return { ok: true };
   },
 
   'POST /api/pick-folder': () => pickFolder(config.outputDir),
+
+  'POST /api/update/check': async () => {
+    const s = await updater.check();
+    broadcast('update', s);
+    return s;
+  },
+
+  'POST /api/update/install': () => {
+    updater
+      .install((p) => broadcast('update', { ...updater.getState(), progress: p }), shutdown)
+      .catch((e) => broadcast('update', { ...updater.getState(), progress: null, error: 'Update fehlgeschlagen: ' + e.message }));
+    return { ok: true };
+  },
 
   'POST /api/quit': () => {
     setTimeout(shutdown, 300);
@@ -390,7 +410,14 @@ server.on('error', async (e) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Spotify → YouTube Downloader läuft auf ${URL_BASE}`);
-  if (!process.argv.includes('--no-browser')) openBrowser(URL_BASE);
+  console.log(`Spotify → YouTube Downloader ${paths.VERSION} läuft auf ${URL_BASE}`);
+  if (process.argv.includes('--updated')) {
+    // Nach einem Update verbindet sich der offene Tab neu – nur falls keiner da ist, Browser öffnen
+    setTimeout(() => clients.size || openBrowser(URL_BASE), 8000);
+  } else if (!process.argv.includes('--no-browser')) openBrowser(URL_BASE);
+  // Beim Start und danach alle 6 Stunden nach Updates sehen
+  const checkUpdate = () => updater.check().then((s) => broadcast('update', s));
+  checkUpdate();
+  setInterval(checkUpdate, 6 * 3600 * 1000).unref();
   tools.ensureTools().then(pump);
 });

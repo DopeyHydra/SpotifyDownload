@@ -14,6 +14,7 @@
       <div>
         <h1>Spotify → YouTube Downloader</h1>
         <span id="toolStatus" class="pill">Verbinde …</span>
+        <span id="version" class="pill"></span>
       </div>
     </div>
     <div class="header-actions">
@@ -22,6 +23,15 @@
       <button class="ghost" id="btnQuit" title="Programm beenden">⏻ Beenden</button>
     </div>
   </header>
+
+  <div id="updateBar" class="update-bar" hidden>
+    <span id="updateText"></span>
+    <span class="update-actions">
+      <a id="updateNotes" target="_blank" rel="noopener">Was ist neu?</a>
+      <button class="small primary" id="btnUpdate">Jetzt aktualisieren</button>
+      <button class="small ghost" id="btnUpdateLater" title="Ausblenden">✕</button>
+    </span>
+  </div>
 
   <main>
     <section class="card sources">
@@ -166,7 +176,7 @@
       <button class="ghost small" id="pickerClose">✕</button>
     </div>
     <form class="row" id="pickerForm">
-      <input id="pickerQuery" placeholder="Eigene Suche, z. B. Interpret Titel" />
+      <input id="pickerQuery" placeholder="Eigene Suche (Interpret Titel) oder YouTube-Link einfügen" />
       <button type="submit">Suchen</button>
     </form>
     <div id="pickerResults"></div>

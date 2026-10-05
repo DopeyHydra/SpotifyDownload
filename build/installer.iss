@@ -47,10 +47,18 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Selbst-Update aus dem Programm heraus (still): neue Version direkt wieder starten
+Filename: "{app}\{#AppExe}"; Parameters: "--updated"; Flags: nowait; Check: IsSelfUpdate
 
 [UninstallRun]
 ; Laufendes Programm (inkl. yt-dlp/ffmpeg) vor dem Entfernen beenden
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /T /IM {#AppExe}"; Flags: runhidden; RunOnceId: "KillApp"
+
+[Code]
+function IsSelfUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATE|0}') = '1';
+end;
 
 [UninstallDelete]
 ; Einstellungen, Log und aktualisierte Werkzeuge entfernen – heruntergeladene Musik bleibt erhalten

@@ -343,7 +343,7 @@ function renderJobs() {
       if (ACTIVE.includes(j.status)) actions += `<button class="small ghost" data-job="${j.id}" data-act="cancel" title="Abbrechen">✕</button>`;
       if (['error', 'cancelled'].includes(j.status)) {
         actions += `<button class="small ghost" data-job="${j.id}" data-act="retry" title="Erneut versuchen">↻</button>`;
-        actions += `<button class="small ghost" data-job="${j.id}" data-act="retryUrl" title="Mit anderem YouTube-Link versuchen">🔗</button>`;
+        actions += `<button class="small primary" data-job="${j.id}" data-act="pick" title="Anderen Treffer, Spotify-Song oder YouTube-Link wählen">Andere Quelle</button>`;
       }
       if (j.status === 'review') actions += `<button class="small primary" data-job="${j.id}" data-act="pick">Auswählen</button>`;
       if (j.file) actions += `<button class="small ghost" data-job="${j.id}" data-act="show" title="Im Explorer zeigen">📂</button>`;
@@ -365,10 +365,8 @@ $('#jobList').addEventListener('click', (e) => {
   if (b.dataset.act === 'cancel') api('/api/cancel', { id });
   if (b.dataset.act === 'retry') api('/api/retry', { id });
   if (b.dataset.act === 'show') api('/api/open', { path: j.file });
-  if (b.dataset.act === 'pick') openPicker(j.track, (choice) => api('/api/resolve', { id, ...choice }).catch((e) => toast(e.message, true)), j.candidates);
-  if (b.dataset.act === 'retryUrl') {
-    const vid = ytId(prompt('YouTube-Link:') || '');
-    if (vid) api('/api/retry', { id, videoId: vid });
+  if (b.dataset.act === 'pick') {
+    openPicker(j.track, (choice) => api('/api/resolve', { id, ...choice }).catch((e) => toast(e.message, true)), j.candidates, j.failedIds);
   }
 });
 
@@ -400,6 +398,16 @@ function connect() {
     scheduleRender();
   });
   es.addEventListener('tools', (e) => setToolStatus(JSON.parse(e.data)));
+  es.addEventListener('update', (e) => renderUpdate(JSON.parse(e.data)));
+  es.onopen = () => {
+    // Nach einem Update läuft eine neue Version → Seite neu laden, damit die neue Oberfläche erscheint
+    api('/api/status')
+      .then((s) => {
+        if (window.appVersion && s.version !== window.appVersion) location.reload();
+        window.appVersion = s.version;
+      })
+      .catch(() => {});
+  };
   es.onerror = () => {
     $('#toolStatus').textContent = 'Programm läuft nicht – bitte neu starten';
     $('#toolStatus').className = 'pill err';
@@ -443,6 +451,9 @@ dlg.addEventListener('close', async () => {
 api('/api/status')
   .then((s) => {
     setToolStatus(s.tools);
+    window.appVersion = s.version;
+    $('#version').textContent = 'v' + s.version;
+    renderUpdate(s.update);
     minScore = s.minScore ?? minScore;
     $('#outputDir').textContent = s.config.outputDir;
   })
@@ -474,9 +485,12 @@ const picker = $('#picker');
 let pickerTrack = null;
 let pickerDone = null;
 
-function openPicker(track, onChoose, initialCandidates) {
+let pickerFailed = new Set();
+
+function openPicker(track, onChoose, initialCandidates, failedIds) {
   pickerTrack = track;
   pickerDone = onChoose;
+  pickerFailed = new Set(failedIds || []);
   $('#pickerWanted').textContent =
     'Gesucht: ' + (track.artist ? `${track.artist} – ${track.title}` : track.title) + (track.duration ? ` (${fmtDur(track.duration)})` : '');
   $('#pickerQuery').value = [track.artist, track.title].filter(Boolean).join(' ');
@@ -489,7 +503,10 @@ async function loadSuggestions(q, initialCandidates) {
   box.innerHTML = '<p class="muted">Suche Vorschläge …</p>';
   try {
     const r = await api('/api/suggest', { track: pickerTrack, q });
-    const yt = r.youtube.length ? r.youtube : initialCandidates || [];
+    // Fehlgeschlagene Quellen ans Ende sortieren und markieren
+    const yt = (r.youtube.length ? r.youtube : initialCandidates || [])
+      .map((c) => ({ ...c, failed: pickerFailed.has(c.id) }))
+      .sort((a, b) => a.failed - b.failed);
     let html = '<div class="result-group"><h3>Spotify</h3>';
     if (!r.spotify.available) {
       html += '<p class="hint">Für Spotify-Vorschläge in den Einstellungen Spotify-API-Zugangsdaten hinterlegen. Unten stehen die YouTube-Vorschläge.</p>';
@@ -516,7 +533,7 @@ async function loadSuggestions(q, initialCandidates) {
           (c, i) => `
         <button class="song" data-yt="${i}">
           <img src="https://i.ytimg.com/vi/${c.id}/default.jpg" alt="" loading="lazy">
-          <span><span class="t">${esc(c.title)}</span><br><span class="o">${c.source === 'ytmusic' ? '♪ YouTube Music' : esc(c.channel)}
+          <span><span class="t">${esc(c.title)}</span><br><span class="o">${c.failed ? '<span class="uncertain">⚠ fehlgeschlagen</span> · ' : ''}${c.source === 'ytmusic' ? '♪ YouTube Music' : esc(c.channel)}
             · <a href="${esc(c.url)}" target="_blank" rel="noopener">ansehen</a></span></span>
           <span class="d">${fmtDur(c.duration)}<br><span class="score ${c.score < minScore ? 'low' : ''}">${Math.round(Math.min(1, c.score / 2) * 100)} %</span></span>
         </button>`,
@@ -546,7 +563,15 @@ async function loadSuggestions(q, initialCandidates) {
 
 $('#pickerForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  loadSuggestions($('#pickerQuery').value.trim());
+  const q = $('#pickerQuery').value.trim();
+  // Eingefügter YouTube-Link wird direkt als Quelle übernommen
+  const id = /youtu/.test(q) ? ytId(q) : null;
+  if (id) {
+    picker.close();
+    pickerDone?.({ videoId: id, videoTitle: q });
+    return;
+  }
+  loadSuggestions(q);
 });
 $('#pickerClose').addEventListener('click', () => picker.close());
 
@@ -561,4 +586,53 @@ $('#btnQuit').addEventListener('click', async () => {
   if (active && !confirm(`${active} Downloads laufen noch. Trotzdem beenden?`)) return;
   await api('/api/quit', {}).catch(() => {});
   showQuit();
+});
+
+// ---------- Selbst-Update ----------
+
+let updateDismissed = null;
+let updating = false;
+
+function renderUpdate(u) {
+  if (!u) return;
+  const bar = $('#updateBar');
+  if (u.error && updating) {
+    updating = false;
+    toast(u.error, true);
+  }
+  if (!u.available || updateDismissed === u.latest) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  $('#updateNotes').href = u.url;
+  const btn = $('#btnUpdate');
+  if (u.progress != null || updating) {
+    $('#updateText').textContent = u.progress >= 100 || u.progress == null
+      ? 'Update wird installiert – das Programm startet gleich neu …'
+      : `Update v${u.latest} wird geladen … ${u.progress} %`;
+    btn.disabled = true;
+  } else {
+    $('#updateText').textContent = `Neue Version v${u.latest} verfügbar (installiert: v${u.current}).`;
+    btn.disabled = !u.packaged;
+    btn.title = u.packaged ? '' : 'Nur in der installierten Version möglich';
+  }
+}
+
+$('#btnUpdate').addEventListener('click', async () => {
+  const active = [...jobs.values()].filter((j) => ACTIVE.includes(j.status)).length;
+  if (active && !confirm(`${active} Downloads laufen noch und werden abgebrochen. Trotzdem aktualisieren?`)) return;
+  updating = true;
+  renderUpdate({ available: true, progress: 0, latest: '' });
+  try {
+    await api('/api/update/install', {});
+  } catch (e) {
+    updating = false;
+    toast(e.message, true);
+  }
+});
+
+$('#btnUpdateLater').addEventListener('click', () => {
+  updateDismissed = $('#updateText').textContent.match(/v([\d.]+)/)?.[1] || true;
+  $('#updateBar').hidden = true;
 });
