@@ -424,7 +424,9 @@ function setToolStatus(s) {
 
 const dlg = $('#settings');
 $('#btnSettings').addEventListener('click', async () => {
-  const { config } = await api('/api/status');
+  const { config, version, update } = await api('/api/status');
+  $('#settingsVersion').textContent = 'v' + version;
+  $('#updateCheckResult').textContent = update?.available ? `v${update.latest} verfügbar` : '';
   const f = $('#formSettings');
   for (const [k, v] of Object.entries(config)) {
     const el = f.elements[k];
@@ -636,3 +638,17 @@ $('#btnUpdateLater').addEventListener('click', () => {
   updateDismissed = $('#updateText').textContent.match(/v([\d.]+)/)?.[1] || true;
   $('#updateBar').hidden = true;
 });
+
+$('#btnCheckUpdate').addEventListener('click', (e) =>
+  busy(e.currentTarget, async () => {
+    const res = $('#updateCheckResult');
+    res.textContent = 'prüfe …';
+    const u = await api('/api/update/check', {});
+    if (u.error) res.textContent = 'Prüfung fehlgeschlagen: ' + u.error;
+    else if (u.available) {
+      updateDismissed = null;
+      renderUpdate(u);
+      res.textContent = `v${u.latest} verfügbar – siehe Leiste oben`;
+    } else res.textContent = 'Du hast die neueste Version.';
+  }),
+);

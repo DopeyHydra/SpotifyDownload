@@ -415,9 +415,7 @@ server.listen(PORT, '127.0.0.1', () => {
     // Nach einem Update verbindet sich der offene Tab neu – nur falls keiner da ist, Browser öffnen
     setTimeout(() => clients.size || openBrowser(URL_BASE), 8000);
   } else if (!process.argv.includes('--no-browser')) openBrowser(URL_BASE);
-  // Beim Start und danach alle 6 Stunden nach Updates sehen
-  const checkUpdate = () => updater.check().then((s) => broadcast('update', s));
-  checkUpdate();
-  setInterval(checkUpdate, 6 * 3600 * 1000).unref();
+  // Beim Start nach Updates sehen (weitere Prüfung nur auf Anfrage über die Einstellungen)
+  updater.check().then((s) => broadcast('update', s));
   tools.ensureTools().then(pump);
 });

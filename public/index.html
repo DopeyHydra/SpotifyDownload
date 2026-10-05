@@ -160,6 +160,13 @@
         <label>Client ID<input name="spotifyClientId" autocomplete="off" /></label>
         <label>Client Secret<input name="spotifyClientSecret" type="password" autocomplete="off" /></label>
       </fieldset>
+      <fieldset>
+        <legend>Programm</legend>
+        <div class="row update-check">
+          <span>Version <strong id="settingsVersion"></strong> · <span id="updateCheckResult" class="muted"></span></span>
+          <button type="button" id="btnCheckUpdate">Nach Updates suchen</button>
+        </div>
+      </fieldset>
       <div class="dialog-actions">
         <button value="cancel" class="ghost">Abbrechen</button>
         <button value="save" class="primary">Speichern</button>
