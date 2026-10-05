@@ -90,6 +90,27 @@ for (const f of ['yt-dlp.exe', 'ffmpeg.exe', 'ffprobe.exe']) {
 }
 fs.copyFileSync(path.join(ROOT, 'README.md'), path.join(APP, 'README.md'));
 
+step('Prüfen, dass keine Zugangsdaten im Paket landen');
+{
+  let secrets = [];
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
+    secrets = [cfg.spotifyClientId, cfg.spotifyClientSecret].filter((v) => v && v.length >= 8);
+  } catch {}
+  const scan = (dir) =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? scan(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+  for (const f of [...scan(APP), path.join(OUT, 'app.cjs')]) {
+    if (path.basename(f).toLowerCase() === 'config.json') throw new Error(`config.json darf nicht ins Paket: ${f}`);
+    const data = fs.readFileSync(f);
+    for (const s of secrets) {
+      if (data.includes(Buffer.from(s)) || data.includes(Buffer.from(s, 'utf16le'))) {
+        throw new Error(`Spotify-Zugangsdaten in ${f} gefunden – Build abgebrochen`);
+      }
+    }
+  }
+  console.log(`ok (${secrets.length ? 'lokale Zugangsdaten gesucht, nicht gefunden' : 'keine lokalen Zugangsdaten vorhanden'})`);
+}
+
 step('Installer bauen (Inno Setup)');
 const iscc = [
   path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Inno Setup 6', 'ISCC.exe'),
