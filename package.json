@@ -1,0 +1,19 @@
+{
+  "name": "spotify-youtube-downloader",
+  "version": "1.0.0",
+  "description": "Sucht Spotify-Titel auf YouTube und lädt sie als MP3/M4A herunter",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "build": "node build/build.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
+    "rcedit": "^5.0.2"
+  }
+}

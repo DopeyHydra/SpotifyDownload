@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spotify → YouTube Downloader</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='11' fill='%231ed760'/><path d='M12 6v8m0 0l-3.5-3.5M12 14l3.5-3.5M7 18h10' stroke='%23111' stroke-width='2.2' fill='none' stroke-linecap='round'/></svg>" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">⬇</span>
+      <div>
+        <h1>Spotify → YouTube Downloader</h1>
+        <span id="toolStatus" class="pill">Verbinde …</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="ghost" id="btnOpenFolder" title="Download-Ordner öffnen">📁 Ordner</button>
+      <button class="ghost" id="btnSettings" title="Einstellungen">⚙ Einstellungen</button>
+      <button class="ghost" id="btnQuit" title="Programm beenden">⏻ Beenden</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card sources">
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="txt">📄 TXT importieren</button>
+        <button class="tab" data-tab="spotify">🎵 Spotify-Link</button>
+        <button class="tab" data-tab="search">🔎 Playlists finden</button>
+        <button class="tab" data-tab="ytpl">▶ YouTube-Playlist</button>
+        <button class="tab" data-tab="single">✚ Einzelne Songs</button>
+      </nav>
+
+      <div class="tab-panel active" data-panel="txt">
+        <label id="dropzone" class="dropzone">
+          <input type="file" id="fileInput" accept=".txt,.tsv,.csv,text/plain" multiple hidden />
+          <strong>TXT-Datei hierher ziehen</strong> oder klicken zum Auswählen
+          <small>Format: # · Bild · Trackname · Interpret · Album · Genre · BPM · Wertung · Dauer · Tonart · Datum Hinzufügung</small>
+        </label>
+        <details class="paste">
+          <summary>… oder Text direkt einfügen</summary>
+          <textarea id="pasteText" rows="6" placeholder="1&#9;&#9;I Love It (feat. Charli XCX)&#9;Icona Pop, Charli xcx&#9;THIS IS... ICONA POP&#9;&#9;126,00&#9;&#9;02:37&#9;&#9;2026-08-17"></textarea>
+          <button id="btnPaste">Übernehmen</button>
+        </details>
+      </div>
+
+      <div class="tab-panel" data-panel="spotify">
+        <form class="row" id="formSpotify">
+          <input id="spotifyUrl" placeholder="https://open.spotify.com/playlist/…  (Playlist, Album oder Track)" required />
+          <button type="submit">Laden</button>
+        </form>
+        <p class="hint">Ohne Spotify-API-Zugang werden max. 100 Titel pro Playlist gelesen. Für größere Playlists: Zugangsdaten in den Einstellungen hinterlegen oder als TXT exportieren.</p>
+      </div>
+
+      <div class="tab-panel" data-panel="search">
+        <form class="row" id="formSearch">
+          <input id="searchQuery" placeholder="z. B. Workout, 80er Hits, Deutschrap, Chill …" required />
+          <button type="submit">Suchen</button>
+        </form>
+        <div id="searchResults"></div>
+      </div>
+
+      <div class="tab-panel" data-panel="ytpl">
+        <form class="row" id="formYt">
+          <input id="ytUrl" placeholder="https://www.youtube.com/playlist?list=…  oder music.youtube.com" required />
+          <button type="submit">Laden</button>
+        </form>
+        <p class="hint">Titel aus YouTube-Playlists werden direkt heruntergeladen – ohne erneute Suche.</p>
+      </div>
+
+      <div class="tab-panel" data-panel="single">
+        <form id="formSingle">
+          <textarea id="singleText" rows="4" placeholder="Ein Song pro Zeile, z. B.&#10;Icona Pop - I Love It&#10;Daft Punk - Get Lucky" required></textarea>
+          <button type="submit">Zur Liste hinzufügen</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="card list" id="listCard" hidden>
+      <div class="list-head">
+        <img id="listCover" alt="" hidden />
+        <div class="list-meta">
+          <input id="listName" class="list-name" title="Name = Unterordner" />
+          <span id="listInfo" class="muted"></span>
+        </div>
+        <div class="list-actions">
+          <button class="ghost" id="btnMatchAll" title="YouTube-Treffer für ausgewählte Titel vorab anzeigen">🔎 Treffer prüfen</button>
+          <button class="primary" id="btnDownload">⬇ Ausgewählte herunterladen</button>
+        </div>
+      </div>
+      <div id="truncatedNote" class="warn" hidden></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="checkAll" checked /></th>
+              <th>#</th><th>Titel</th><th>Interpret</th><th class="hide-sm">Album</th><th>Dauer</th><th>YouTube-Treffer</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="trackBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card downloads">
+      <div class="list-head">
+        <h2>Downloads <span id="jobSummary" class="muted"></span></h2>
+        <div class="list-actions">
+          <button class="ghost" id="btnRetryAll">↻ Fehler wiederholen</button>
+          <button class="ghost" id="btnCancelAll">✕ Alle abbrechen</button>
+          <button class="ghost" id="btnClear">Erledigte entfernen</button>
+        </div>
+      </div>
+      <div class="location">
+        <span class="muted">Speicherort:</span>
+        <code id="outputDir" title="Download-Ordner">…</code>
+        <button class="small ghost" id="btnPickFolder">Ändern …</button>
+      </div>
+      <div id="overall" class="progress big"><div></div></div>
+      <ul id="jobList"><li class="empty">Noch keine Downloads.</li></ul>
+    </section>
+  </main>
+
+  <dialog id="settings">
+    <form method="dialog" id="formSettings">
+      <h2>Einstellungen</h2>
+      <label>Download-Ordner
+        <span class="row"><input name="outputDir" /><button type="button" id="btnBrowse">Durchsuchen …</button></span>
+      </label>
+      <label class="check"><input type="checkbox" name="subfolder" /> Unterordner pro Playlist anlegen</label>
+      <label class="check"><input type="checkbox" name="askOnUncertain" /> Bei unsicheren Treffern nachfragen (Vorschläge anzeigen statt raten)</label>
+      <div class="grid2">
+        <label>Format
+          <select name="format"><option value="mp3">MP3</option><option value="m4a">M4A (AAC)</option></select>
+        </label>
+        <label>MP3-Qualität
+          <select name="quality"><option value="320K">320 kbit/s</option><option value="256K">256 kbit/s</option><option value="192K">192 kbit/s</option><option value="128K">128 kbit/s</option></select>
+        </label>
+        <label>Gleichzeitige Downloads<input name="concurrency" type="number" min="1" max="8" /></label>
+        <label>Suche über
+          <select name="source"><option value="ytmusic">YouTube Music + YouTube (empfohlen)</option><option value="youtube">nur YouTube</option></select>
+        </label>
+      </div>
+      <fieldset>
+        <legend>Spotify-API (optional)</legend>
+        <p class="hint">Nötig für die Spotify-Playlistsuche und für Playlists mit mehr als 100 Titeln. Kostenlos erstellen unter
+          <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> → „Create app“ → Client ID &amp; Secret kopieren.</p>
+        <label>Client ID<input name="spotifyClientId" autocomplete="off" /></label>
+        <label>Client Secret<input name="spotifyClientSecret" type="password" autocomplete="off" /></label>
+      </fieldset>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost">Abbrechen</button>
+        <button value="save" class="primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="picker">
+    <div class="picker-head">
+      <div>
+        <h2>Song auswählen</h2>
+        <span class="muted" id="pickerWanted"></span>
+      </div>
+      <button class="ghost small" id="pickerClose">✕</button>
+    </div>
+    <form class="row" id="pickerForm">
+      <input id="pickerQuery" placeholder="Eigene Suche, z. B. Interpret Titel" />
+      <button type="submit">Suchen</button>
+    </form>
+    <div id="pickerResults"></div>
+  </dialog>
+
+  <div id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

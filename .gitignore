@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/out/
+bin/
+downloads/
+config.json
+app.log
