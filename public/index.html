@@ -132,6 +132,13 @@
         <code id="outputDir" title="Download-Ordner">…</code>
         <button class="small ghost" id="btnPickFolder">Ändern …</button>
       </div>
+      <div id="queuePausedBar" class="warn paused-bar" hidden>
+        <span><strong>⏸ Warteschlange pausiert.</strong> <span id="queuePausedText"></span></span>
+        <span class="paused-actions">
+          <button class="small primary" id="btnResume">Fortsetzen</button>
+          <button class="small ghost" id="btnPausedSettings">YouTube-Cookies einrichten</button>
+        </span>
+      </div>
       <div id="overall" class="progress big"><div></div></div>
       <ul id="jobList"><li class="empty">Noch keine Downloads.</li></ul>
     </section>
@@ -186,6 +193,27 @@
           <button type="button" id="btnSpotifyLogin">Mit Spotify anmelden</button>
         </div>
         <p class="hint" style="margin:0">Die Anmeldung ist nötig für Playlists mit mehr als 100 Titeln – Spotify gibt Playlist-Inhalte nur noch an angemeldete Konten heraus.</p>
+      </fieldset>
+      <fieldset>
+        <legend>YouTube-Anmeldung (nur bei Bot-Sperre)</legend>
+        <p class="hint" style="margin:0">Meldet YouTube „Bestätige, dass du kein Bot bist“, kann eine angemeldete YouTube-Sitzung genutzt werden.
+          Chrome und Edge verschlüsseln ihre Cookies unter Windows so, dass sie nicht direkt gelesen werden können – daher einmalig eine <b>cookies.txt</b> exportieren:</p>
+        <ol class="hint cookie-steps">
+          <li>In Chrome die Erweiterung <a href="https://chromewebstore.google.com/search/Get%20cookies.txt%20LOCALLY" target="_blank" rel="noopener">„Get cookies.txt LOCALLY“</a> installieren und unter „Details“ <i>Im Inkognito-Modus zulassen</i> aktivieren.</li>
+          <li>Ein <b>Inkognito-Fenster</b> öffnen, auf youtube.com anmelden (am besten mit einem Zweitkonto).</li>
+          <li>Erweiterung anklicken → <i>Export</i> → Datei speichern, dann das Inkognito-Fenster schließen.</li>
+          <li>Unten „cookies.txt-Datei“ wählen und den Pfad eintragen.</li>
+        </ol>
+        <label>Cookies verwenden aus
+          <select name="ytCookies">
+            <option value="">Aus (Standard)</option>
+            <option value="file">cookies.txt-Datei</option>
+            <option value="firefox">Firefox (direkt)</option>
+          </select>
+        </label>
+        <label id="ytCookiesFileRow">Pfad zur cookies.txt
+          <span class="row"><input name="ytCookiesFile" placeholder="C:\Users\…\Downloads\www.youtube.com_cookies.txt" /><button type="button" id="btnCookieFile">Durchsuchen …</button></span>
+        </label>
       </fieldset>
       <fieldset>
         <legend>Programm</legend>

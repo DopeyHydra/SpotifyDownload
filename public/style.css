@@ -152,6 +152,7 @@ dialog { border: 1px solid var(--border); border-radius: 14px; background: var(-
 dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 dialog form { display: grid; gap: 12px; }
 dialog label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+dialog label[hidden] { display: none; }
 dialog label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
 dialog label.check input { width: auto; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -201,6 +202,11 @@ legend { font-weight: 600; padding: 0 4px; }
 .spotify-login { align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; }
 .spotify-login span { flex: 1; min-width: 180px; }
 .spotify-login span.ok { color: var(--accent); font-weight: 600; }
+
+.cookie-steps { margin: 0; padding-left: 20px; display: grid; gap: 3px; }
+.paused-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.paused-bar[hidden] { display: none; }
+.paused-actions { display: flex; gap: 6px; }
 
 /* ---------- Ansichten ---------- */
 .views { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 10px; }

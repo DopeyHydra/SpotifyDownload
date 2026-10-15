@@ -412,6 +412,7 @@ function connect() {
   });
   es.addEventListener('tools', (e) => setToolStatus(JSON.parse(e.data)));
   es.addEventListener('dups', (e) => onDupProgress(JSON.parse(e.data)));
+  es.addEventListener('queue', (e) => renderQueuePaused(JSON.parse(e.data)));
   es.addEventListener('spotify', (e) => {
     const { user } = JSON.parse(e.data);
     renderSpotifyLogin(user);
@@ -446,6 +447,7 @@ $('#btnSettings').addEventListener('click', async () => {
   const { config, version, update } = await api('/api/status');
   $('#settingsVersion').textContent = 'v' + version;
   renderSpotifyLogin(config.spotifyUser);
+  toggleCookieFile();
   $('#updateCheckResult').textContent = update?.available ? `v${update.latest} verfügbar` : '';
   const f = $('#formSettings');
   for (const [k, v] of Object.entries(config)) {
@@ -910,5 +912,29 @@ $('#btnSpotifyLogin').addEventListener('click', (e) =>
     const { url } = await api('/api/spotify/login', {});
     window.open(url, '_blank');
     $('#spotifyLoginState').textContent = 'Warte auf Anmeldung im neuen Tab …';
+  }),
+);
+
+// ---------- Pausierte Warteschlange (YouTube-Bot-Schutz) ----------
+
+function renderQueuePaused(p) {
+  $('#queuePausedBar').hidden = !p;
+  if (p) $('#queuePausedText').textContent = p.reason;
+}
+
+$('#btnResume').addEventListener('click', (e) => busy(e.currentTarget, () => api('/api/queue/resume', {})));
+$('#btnPausedSettings').addEventListener('click', () => $('#btnSettings').click());
+
+function toggleCookieFile() {
+  $('#ytCookiesFileRow').hidden = $('#formSettings').elements.ytCookies.value !== 'file';
+}
+$('#formSettings').elements.ytCookies.addEventListener('change', toggleCookieFile);
+
+api('/api/status').then((s) => renderQueuePaused(s.queuePaused)).catch(() => {});
+
+$('#btnCookieFile').addEventListener('click', (e) =>
+  busy(e.currentTarget, async () => {
+    const { path } = await api('/api/pick-cookies', {});
+    if (path) $('#formSettings').elements.ytCookiesFile.value = path;
   }),
 );

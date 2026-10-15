@@ -41,6 +41,8 @@ const DEFAULT_CONFIG = {
   spotifyClientId: '',
   spotifyClientSecret: '',
   spotifyRefreshToken: '',
+  ytCookies: '',
+  ytCookiesFile: '',
   spotifyUser: '',
   dupFolders: [],
   dupBySong: true,
@@ -56,6 +58,8 @@ function saveConfig() {
 }
 
 // Spotify-Anmeldung speichert Refresh-Token/Kontoname in der Konfiguration
+yt.setAuth(config);
+
 spotify.setPersist((patch) => {
   Object.assign(config, patch);
   saveConfig();
@@ -92,14 +96,28 @@ function update(job, patch) {
   broadcast('job', publicJob(job));
 }
 
+// Blockiert YouTube (Bot-Schutz), wird die Warteschlange pausiert statt weiter Anfragen zu senden
+let queuePaused = null;
+function pauseQueue(reason) {
+  if (queuePaused) return;
+  queuePaused = { reason, since: Date.now() };
+  console.warn('Warteschlange pausiert:', reason);
+  broadcast('queue', queuePaused);
+}
+
 function pump() {
-  if (!tools.getStatus().ready) return;
+  if (!tools.getStatus().ready || queuePaused) return;
   while (running < Math.max(1, Number(config.concurrency) || 1)) {
     const job = [...jobs.values()].find((j) => j.status === 'queued');
     if (!job) return;
     running++;
     processJob(job)
       .catch((e) => {
+        if (e.code === 'BOT' || e.code === 'COOKIES') {
+          // Kein Fehler des Songs → zurück in die Warteschlange, alles pausieren
+          pauseQueue(e.message);
+          return update(job, { status: 'queued', progress: 0, error: null });
+        }
         // Fehlgeschlagene Quelle merken, damit sie bei der nächsten Auswahl nicht wieder genommen wird
         const failedIds = job.videoId && !job.failedIds?.includes(job.videoId) ? [...(job.failedIds || []), job.videoId] : job.failedIds;
         update(job, { status: 'error', error: e.message, failedIds });
@@ -135,6 +153,14 @@ async function processJob(job) {
     if (job.status === 'cancelled') return;
   }
 
+  try {
+    await downloadWithInfo(job, dir, videoId, info);
+  } finally {
+    yt.dropInfo(info);
+  }
+}
+
+async function downloadWithInfo(job, dir, videoId, info) {
   // Dateiname, Tags und Cover kommen vom tatsächlich heruntergeladenen Song – nicht aus der Spotify-Liste
   const meta = yt.metaFromInfo(info);
   const base = yt.trackBaseName(meta);
@@ -146,7 +172,7 @@ async function processJob(job) {
   if (fs.existsSync(target)) return update(job, { status: 'exists', progress: 100, file: target });
 
   update(job, { status: 'downloading', progress: 0, videoId });
-  const dl = yt.downloadAudio({ videoId, dir, base, format: config.format, quality: config.quality }, (ev) => {
+  const dl = yt.downloadAudio({ videoId, infoFile: info.infoFile, dir, base, format: config.format, quality: config.quality }, (ev) => {
     if (ev.type === 'progress' && Math.abs(ev.value - (job.progress || 0)) >= 2) update(job, { progress: ev.value });
     if (ev.type === 'stage' && job.status !== 'converting') update(job, { status: 'converting', progress: 100 });
   });
@@ -202,6 +228,26 @@ function openInExplorer(p) {
   spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
 }
 
+// Öffnet den Windows-Dateiauswahldialog (für die cookies.txt)
+function pickFile(filter) {
+  if (process.platform !== 'win32') throw new Error('Dateiauswahl nur unter Windows – bitte Pfad eintippen');
+  const ps = `
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    Add-Type -AssemblyName System.Windows.Forms
+    $d = New-Object System.Windows.Forms.OpenFileDialog
+    $d.Filter = $env:PICK_FILTER
+    $d.InitialDirectory = [Environment]::GetFolderPath('UserProfile') + '\\Downloads'
+    $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }
+    if ($d.ShowDialog($owner) -eq 'OK') { $d.FileName }`;
+  return new Promise((resolve, reject) => {
+    const p = spawn('powershell', ['-NoProfile', '-STA', '-Command', ps], { windowsHide: true, env: { ...process.env, PICK_FILTER: filter } });
+    let out = '';
+    p.stdout.on('data', (d) => (out += d));
+    p.on('error', reject);
+    p.on('close', () => resolve({ path: out.trim() || null }));
+  });
+}
+
 // Öffnet den Windows-Ordnerauswahldialog und liefert den gewählten Pfad
 function pickFolder(initial) {
   if (process.platform !== 'win32') throw new Error('Ordnerauswahl nur unter Windows – bitte Pfad eintippen');
@@ -246,7 +292,7 @@ function streamDupFile(req, res, file) {
 }
 
 const routes = {
-  'GET /api/status': () => ({ version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: publicConfig() }),
+  'GET /api/status': () => ({ queuePaused, version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: publicConfig() }),
 
   'POST /api/config': (body) => {
     const oldClientId = config.spotifyClientId;
@@ -258,6 +304,13 @@ const routes = {
     // Andere Spotify-App → bisherige Anmeldung gilt nicht mehr
     if (config.spotifyClientId !== oldClientId && config.spotifyRefreshToken) spotify.logout();
     config.concurrency = Math.min(8, Math.max(1, Number(config.concurrency) || 2));
+    if (config.ytCookies === 'file') {
+      const cf = String(config.ytCookiesFile || '').trim().replace(/^"|"$/g, '');
+      if (!cf || !fs.existsSync(cf)) throw new Error('cookies.txt nicht gefunden – bitte Pfad prüfen');
+      const head = fs.readFileSync(cf, 'utf8').slice(0, 20000);
+      if (!/youtube\.com/.test(head)) throw new Error('Die cookies.txt enthält keine YouTube-Cookies – bitte auf youtube.com exportieren');
+      config.ytCookiesFile = cf;
+    }
     config.outputDir = path.resolve(String(config.outputDir || DEFAULT_CONFIG.outputDir).trim());
     try {
       fs.mkdirSync(config.outputDir, { recursive: true });
@@ -265,6 +318,14 @@ const routes = {
       throw new Error('Download-Ordner kann nicht angelegt werden: ' + e.message);
     }
     saveConfig();
+    yt.setAuth(config);
+    pump();
+    return { ok: true };
+  },
+
+  'POST /api/queue/resume': () => {
+    queuePaused = null;
+    broadcast('queue', null);
     pump();
     return { ok: true };
   },
@@ -358,6 +419,7 @@ const routes = {
   },
 
   'POST /api/pick-folder': () => pickFolder(config.outputDir),
+  'POST /api/pick-cookies': () => pickFile('Cookie-Datei (*.txt)|*.txt|Alle Dateien (*.*)|*.*'),
 
   // Spotify-Benutzeranmeldung (nötig für Playlist-Inhalte)
   'POST /api/spotify/login': () => {
