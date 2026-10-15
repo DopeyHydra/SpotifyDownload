@@ -98,7 +98,7 @@ step('Prüfen, dass keine Zugangsdaten im Paket landen');
   let secrets = [];
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
-    secrets = [cfg.spotifyClientId, cfg.spotifyClientSecret].filter((v) => v && v.length >= 8);
+    secrets = [cfg.spotifyClientId, cfg.spotifyClientSecret, cfg.spotifyRefreshToken].filter((v) => v && v.length >= 8);
   } catch {}
   const scan = (dir) =>
     fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? scan(path.join(dir, e.name)) : [path.join(dir, e.name)]));

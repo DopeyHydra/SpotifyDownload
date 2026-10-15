@@ -198,6 +198,10 @@ legend { font-weight: 600; padding: 0 4px; }
 .update-check { align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; }
 .update-check > span { flex: 1; min-width: 200px; }
 
+.spotify-login { align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; }
+.spotify-login span { flex: 1; min-width: 180px; }
+.spotify-login span.ok { color: var(--accent); font-weight: 600; }
+
 /* ---------- Ansichten ---------- */
 .views { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 10px; }
 .view { border: none; background: transparent; color: var(--muted); padding: 6px 12px; }

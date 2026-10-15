@@ -79,7 +79,7 @@ $$('.tab').forEach((tab) =>
 function setList(data, append = false) {
   const tracks = data.tracks.map((t) => ({ ...t, selected: true }));
   if (append && list) list.tracks.push(...tracks);
-  else list = { name: data.name, cover: data.cover, truncated: data.truncated, tracks };
+  else list = { name: data.name, cover: data.cover, truncated: data.truncated, apiNote: data.apiNote, tracks };
   renderList();
   $('#listCard').hidden = false;
   $('#listCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -95,7 +95,7 @@ function renderList() {
   const sel = list.tracks.filter((t) => t.selected).length;
   $('#listInfo').textContent = `${list.tracks.length} Titel · ${sel} ausgewählt${total ? ' · ' + Math.round(total / 60) + ' min' : ''}`;
   $('#truncatedNote').hidden = !list.truncated;
-  $('#truncatedNote').textContent = 'Spotify zeigt ohne API-Zugang nur die ersten 100 Titel. Für die komplette Playlist Spotify-Zugangsdaten in den Einstellungen eintragen oder als TXT exportieren und importieren.';
+  $('#truncatedNote').textContent = list.apiNote || 'Ohne Spotify-Anmeldung werden nur die ersten 100 Titel gelesen. Für die komplette Playlist in den Einstellungen Client ID/Secret eintragen und „Mit Spotify anmelden“ – oder die Liste als TXT exportieren und importieren.';
   $('#checkAll').checked = sel === list.tracks.length;
 
   $('#trackBody').innerHTML = list.tracks
@@ -412,6 +412,11 @@ function connect() {
   });
   es.addEventListener('tools', (e) => setToolStatus(JSON.parse(e.data)));
   es.addEventListener('dups', (e) => onDupProgress(JSON.parse(e.data)));
+  es.addEventListener('spotify', (e) => {
+    const { user } = JSON.parse(e.data);
+    renderSpotifyLogin(user);
+    if (user) toast(`Mit Spotify verbunden: ${user}`);
+  });
   es.addEventListener('update', (e) => renderUpdate(JSON.parse(e.data)));
   es.onopen = () => {
     // Nach einem Update läuft eine neue Version → Seite neu laden, damit die neue Oberfläche erscheint
@@ -440,6 +445,7 @@ const dlg = $('#settings');
 $('#btnSettings').addEventListener('click', async () => {
   const { config, version, update } = await api('/api/status');
   $('#settingsVersion').textContent = 'v' + version;
+  renderSpotifyLogin(config.spotifyUser);
   $('#updateCheckResult').textContent = update?.available ? `v${update.latest} verfügbar` : '';
   const f = $('#formSettings');
   for (const [k, v] of Object.entries(config)) {
@@ -878,3 +884,31 @@ api('/api/status')
   })
   .catch(() => renderDupFolders());
 if (location.hash === '#duplikate') document.querySelector('.view[data-view="dups"]').click();
+
+// ---------- Spotify-Anmeldung ----------
+
+let spotifyUser = '';
+function renderSpotifyLogin(user) {
+  spotifyUser = user || '';
+  const el = $('#spotifyLoginState');
+  el.textContent = spotifyUser ? `✔ Angemeldet als ${spotifyUser}` : 'Nicht angemeldet';
+  el.className = spotifyUser ? 'ok' : 'muted';
+  $('#btnSpotifyLogin').textContent = spotifyUser ? 'Abmelden' : 'Mit Spotify anmelden';
+}
+
+$('#btnSpotifyLogin').addEventListener('click', (e) =>
+  busy(e.currentTarget, async () => {
+    if (spotifyUser) {
+      await api('/api/spotify/logout', {});
+      return renderSpotifyLogin('');
+    }
+    // Eingetragene Zugangsdaten zuerst speichern, dann Spotify-Anmeldung in neuem Tab öffnen
+    const f = $('#formSettings');
+    const body = {};
+    for (const el of f.elements) if (el.name) body[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+    await api('/api/config', body);
+    const { url } = await api('/api/spotify/login', {});
+    window.open(url, '_blank');
+    $('#spotifyLoginState').textContent = 'Warte auf Anmeldung im neuen Tab …';
+  }),
+);

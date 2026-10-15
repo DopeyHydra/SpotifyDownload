@@ -37,7 +37,8 @@ Oben auf **🔁 Duplikate** umschalten, einen oder mehrere Ordner hinzufügen un
 
 - **Download-Ordner**: frei wählbar per „Durchsuchen …“ oder „Ändern …“ im Download-Bereich, optional mit Unterordner pro Playlist
 - Format MP3 (128–320 kbit/s) oder M4A, Anzahl gleichzeitiger Downloads
-- **Spotify-API (optional)**: Client ID und Secret von https://developer.spotify.com/dashboard. Damit funktionieren die Spotify-Playlistsuche, die Spotify-Vorschläge und Playlists mit mehr als 100 Titeln.
+- **Spotify (optional)**: Client ID und Secret von https://developer.spotify.com/dashboard, Redirect-URI `http://127.0.0.1:3456/callback`. Damit funktionieren die Spotify-Suche und die Spotify-Vorschläge.
+  Für **Playlists mit mehr als 100 Titeln** zusätzlich **„Mit Spotify anmelden“**, denn Spotify gibt Playlist-Inhalte nur noch an angemeldete Konten heraus. Spotify-eigene Playlists („Today's Top Hits“, „This Is …“, Mixe) sperrt Spotify für eigene Apps ganz. Dann die Playlist in Spotify in eine eigene Playlist kopieren und deren Link verwenden.
 
 ## Installer bauen
 

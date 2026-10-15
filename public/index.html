@@ -176,10 +176,16 @@
       </div>
       <fieldset>
         <legend>Spotify-API (optional)</legend>
-        <p class="hint">Nötig für die Spotify-Playlistsuche und für Playlists mit mehr als 100 Titeln. Kostenlos erstellen unter
-          <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> → „Create app“ → Client ID &amp; Secret kopieren.</p>
+        <p class="hint">Für Spotify-Suche und -Vorschläge. Kostenlos unter
+          <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> → „Create app“ → Client ID &amp; Secret kopieren.
+          Als Redirect-URI in der Spotify-App <code>http://127.0.0.1:3456/callback</code> eintragen.</p>
         <label>Client ID<input name="spotifyClientId" autocomplete="off" /></label>
         <label>Client Secret<input name="spotifyClientSecret" type="password" autocomplete="off" /></label>
+        <div class="row spotify-login">
+          <span id="spotifyLoginState" class="muted"></span>
+          <button type="button" id="btnSpotifyLogin">Mit Spotify anmelden</button>
+        </div>
+        <p class="hint" style="margin:0">Die Anmeldung ist nötig für Playlists mit mehr als 100 Titeln – Spotify gibt Playlist-Inhalte nur noch an angemeldete Konten heraus.</p>
       </fieldset>
       <fieldset>
         <legend>Programm</legend>

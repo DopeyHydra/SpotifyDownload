@@ -40,6 +40,8 @@ const DEFAULT_CONFIG = {
   subfolder: true,
   spotifyClientId: '',
   spotifyClientSecret: '',
+  spotifyRefreshToken: '',
+  spotifyUser: '',
   dupFolders: [],
   dupBySong: true,
 };
@@ -51,6 +53,19 @@ try {
 
 function saveConfig() {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+// Spotify-Anmeldung speichert Refresh-Token/Kontoname in der Konfiguration
+spotify.setPersist((patch) => {
+  Object.assign(config, patch);
+  saveConfig();
+  broadcast('spotify', { user: config.spotifyUser || '' });
+});
+
+// Nur diese Werte gehen an die Oberfläche – Secret maskiert, Refresh-Token nie
+function publicConfig() {
+  const { spotifyRefreshToken, ...rest } = config;
+  return { ...rest, spotifyClientSecret: config.spotifyClientSecret ? '••••••' : '' };
 }
 
 // ---------- Live-Updates (Server-Sent Events) ----------
@@ -231,14 +246,17 @@ function streamDupFile(req, res, file) {
 }
 
 const routes = {
-  'GET /api/status': () => ({ version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: { ...config, spotifyClientSecret: config.spotifyClientSecret ? '••••••' : '' } }),
+  'GET /api/status': () => ({ version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: publicConfig() }),
 
   'POST /api/config': (body) => {
+    const oldClientId = config.spotifyClientId;
     for (const k of Object.keys(DEFAULT_CONFIG)) {
-      if (body[k] === undefined) continue;
+      if (body[k] === undefined || k === 'spotifyRefreshToken' || k === 'spotifyUser') continue;
       if (k === 'spotifyClientSecret' && body[k] === '••••••') continue;
-      config[k] = body[k];
+      config[k] = typeof body[k] === 'string' ? body[k].trim() : body[k];
     }
+    // Andere Spotify-App → bisherige Anmeldung gilt nicht mehr
+    if (config.spotifyClientId !== oldClientId && config.spotifyRefreshToken) spotify.logout();
     config.concurrency = Math.min(8, Math.max(1, Number(config.concurrency) || 2));
     config.outputDir = path.resolve(String(config.outputDir || DEFAULT_CONFIG.outputDir).trim());
     try {
@@ -341,6 +359,17 @@ const routes = {
 
   'POST /api/pick-folder': () => pickFolder(config.outputDir),
 
+  // Spotify-Benutzeranmeldung (nötig für Playlist-Inhalte)
+  'POST /api/spotify/login': () => {
+    // Die Redirect-URI in der Spotify-App ist fest auf Port ${PORT} eingetragen
+    if (port !== PORT) throw new Error(`Anmeldung nur möglich, wenn das Programm auf Port ${PORT} läuft (aktuell ${port}). Bitte andere Instanzen bzw. start.bat schließen und neu starten.`);
+    return { url: spotify.loginUrl(config, `http://127.0.0.1:${port}/callback`) };
+  },
+  'POST /api/spotify/logout': () => {
+    spotify.logout();
+    return { ok: true };
+  },
+
   'POST /api/update/check': async () => {
     const s = await updater.check();
     broadcast('update', s);
@@ -417,6 +446,23 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/dups/file') return streamDupFile(req, res, url.searchParams.get('path') || '');
+
+  // Rückleitung von Spotify nach "Mit Spotify anmelden"
+  if (url.pathname === '/callback') {
+    let ok = true;
+    let msg;
+    try {
+      msg = `Angemeldet als <b>${(await spotify.handleCallback(config, url.searchParams)).replace(/[<>&]/g, '')}</b>.`;
+    } catch (e) {
+      ok = false;
+      msg = String(e.message).replace(/[<>&]/g, '');
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(`<!doctype html><meta charset="utf-8"><title>Spotify-Anmeldung</title>
+<body style="font:16px system-ui;background:#0f1115;color:#e8eaed;display:grid;place-items:center;height:100vh;margin:0">
+<div style="text-align:center"><div style="font-size:42px">${ok ? '✅' : '⚠️'}</div><h2>${ok ? 'Spotify verbunden' : 'Anmeldung fehlgeschlagen'}</h2>
+<p>${msg}</p><p style="color:#9aa0aa">Du kannst diesen Tab schließen.</p></div>`);
+  }
 
   const route = routes[`${req.method} ${url.pathname}`];
   if (route) {
