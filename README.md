@@ -23,6 +23,11 @@ Beim ersten Start werden `yt-dlp` und `ffmpeg` automatisch nach `bin/` herunterg
 - **Passt nichts**, wird der beste normale YouTube-Eintrag nur **vorgeschlagen**. Der Download steht dann auf „Auswahl nötig“. Mit **Vorschlag laden** bestätigst du ihn, mit **Andere wählen** suchst du selbst, auch über Spotify-Vorschläge oder einen eigenen YouTube-Link.
 - **Dateiname, Tags und Cover** kommen immer vom tatsächlich heruntergeladenen Song, also Interpret, Titel, Album und Jahr von YouTube Music bzw. aus dem Videotitel. Weicht das von der Liste ab, zeigt die Download-Liste beides an.
 
+### Wenn YouTube blockiert
+
+Bei sehr vielen Downloads am Stück aktiviert YouTube manchmal einen Bot-Schutz („Bestätige, dass du kein Bot bist“). Das Programm **pausiert dann die Warteschlange**, statt weitere Anfragen zu senden. Die Songs bleiben erhalten, später geht es mit **Fortsetzen** weiter. Die Sperre hebt sich meist nach einigen Stunden auf.
+Alternativ kann unter ⚙ → *YouTube-Anmeldung* eine **cookies.txt** einer angemeldeten YouTube-Sitzung hinterlegt werden. Eine Anleitung steht dort. Chrome- und Edge-Cookies lassen sich unter Windows nicht direkt lesen.
+
 ## Duplikate finden
 
 Oben auf **🔁 Duplikate** umschalten, einen oder mehrere Ordner hinzufügen und auf **Duplikate suchen** klicken. Die Unterordner werden mitdurchsucht.
