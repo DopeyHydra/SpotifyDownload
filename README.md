@@ -19,8 +19,9 @@ Beim ersten Start werden `yt-dlp` und `ffmpeg` automatisch nach `bin/` herunterg
 
 ## Treffer-Suche
 
-Jeder Titel wird parallel auf YouTube Music und YouTube gesucht. Die Kandidaten werden bewertet nach Titel, Interpret, Dauer und „Topic“-Kanal. Remix-, Live-, Cover- und „Sped up“-Versionen werden abgewertet, wenn das Original sie nicht enthält.
-Ist kein Treffer eindeutig, wird **nichts** heruntergeladen. Der Download steht dann auf **„Auswahl nötig“**, und unter „Auswählen“ erscheinen Spotify- und YouTube-Vorschläge sowie eine eigene Suche. In der Titelliste zeigt „Treffer prüfen“ das vorab an.
+- **Automatisch wird nur YouTube Music durchsucht.** Ein Treffer wird nur übernommen, wenn Titel, Interpret und Dauer zum gesuchten Song passen. Remix-, Live-, Cover- und „Sped up“-Versionen werden ausgeschlossen, wenn das Original sie nicht enthält.
+- **Passt nichts**, wird der beste normale YouTube-Eintrag nur **vorgeschlagen**. Der Download steht dann auf „Auswahl nötig“. Mit **Vorschlag laden** bestätigst du ihn, mit **Andere wählen** suchst du selbst, auch über Spotify-Vorschläge oder einen eigenen YouTube-Link.
+- **Dateiname, Tags und Cover** kommen immer vom tatsächlich heruntergeladenen Song, also Interpret, Titel, Album und Jahr von YouTube Music bzw. aus dem Videotitel. Weicht das von der Liste ab, zeigt die Download-Liste beides an.
 
 ## Duplikate finden
 

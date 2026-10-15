@@ -37,9 +37,7 @@ const DEFAULT_CONFIG = {
   format: 'mp3',
   quality: '320K',
   concurrency: 2,
-  source: 'ytmusic',
   subfolder: true,
-  askOnUncertain: true,
   spotifyClientId: '',
   spotifyClientSecret: '',
   dupFolders: [],
@@ -102,27 +100,35 @@ function pump() {
 async function processJob(job) {
   const t = job.track;
   const dir = config.subfolder && job.listName ? path.join(config.outputDir, yt.safeName(job.listName)) : config.outputDir;
-  const base = yt.trackBaseName(t);
-  const target = path.join(dir, `${base}.${config.format}`);
-  if (fs.existsSync(target)) return update(job, { status: 'exists', progress: 100, file: target });
 
   let videoId = t.videoId;
+  let info = null;
   if (!videoId) {
+    // Automatisch nur YouTube Music – passt nichts, wird ein YouTube-Treffer nur vorgeschlagen
     update(job, { status: 'searching' });
-    const failed = new Set(job.failedIds || []);
-    const candidates = (await yt.searchCandidates(t, config)).filter((c) => !failed.has(c.id));
+    const res = await yt.findMatch(t, { exclude: job.failedIds || [] });
     if (job.status === 'cancelled') return;
-    job.candidates = candidates.slice(0, 8);
-    const best = candidates[0];
-    if (!best || (best.score < yt.MIN_SCORE && config.askOnUncertain && !job.auto)) {
-      // Nicht eindeutig gefunden → Nutzer wählt aus Spotify-/YouTube-Vorschlägen
-      return update(job, { status: 'review', candidates: candidates.slice(0, 8), match: null });
+    if (!res.auto) {
+      const suggestion = res.candidates.find((c) => c.source === 'youtube') || res.candidates[0] || null;
+      return update(job, { status: 'review', candidates: res.candidates.slice(0, 8), suggestion, match: null });
     }
-    videoId = best.id;
-    update(job, { match: { id: best.id, title: best.title, channel: best.channel, url: best.url, score: best.score, source: best.source } });
-  } else if (!job.match) {
-    update(job, { match: { id: videoId, title: t.videoTitle || videoId, url: `https://www.youtube.com/watch?v=${videoId}` } });
+    videoId = res.auto.id;
+    info = res.info;
+  } else {
+    update(job, { status: 'searching' });
+    info = await yt.getInfo(videoId);
+    if (job.status === 'cancelled') return;
   }
+
+  // Dateiname, Tags und Cover kommen vom tatsächlich heruntergeladenen Song – nicht aus der Spotify-Liste
+  const meta = yt.metaFromInfo(info);
+  const base = yt.trackBaseName(meta);
+  const target = path.join(dir, `${base}.${config.format}`);
+  update(job, {
+    saved: { title: meta.title, artist: meta.artist, album: meta.album },
+    match: { id: videoId, title: info.track ? `${meta.artist} – ${meta.title}` : info.title, channel: meta.album ? `Album: ${meta.album}` : info.channel, url: `https://www.youtube.com/watch?v=${videoId}`, source: info.track ? 'ytmusic' : 'youtube' },
+  });
+  if (fs.existsSync(target)) return update(job, { status: 'exists', progress: 100, file: target });
 
   update(job, { status: 'downloading', progress: 0, videoId });
   const dl = yt.downloadAudio({ videoId, dir, base, format: config.format, quality: config.quality }, (ev) => {
@@ -138,7 +144,7 @@ async function processJob(job) {
     throw e;
   }
   update(job, { status: 'converting' });
-  await yt.writeTags(file, t, job.trackNo);
+  await yt.writeTags(file, meta, job.trackNo);
   update(job, { status: 'done', progress: 100, file });
 }
 
@@ -269,12 +275,12 @@ const routes = {
     };
   },
 
-  'POST /api/match': async (body) => ({ candidates: (await yt.searchCandidates(body.track || {}, config)).slice(0, 10) }),
+  'POST /api/match': async (body) => ({ candidates: (await yt.findMatch(body.track || {})).candidates.slice(0, 10) }),
 
   'POST /api/download': (body) => {
     const ids = [];
     (body.tracks || []).forEach((t, i) => {
-      const job = { id: nextId++, track: t, auto: false, trackNo: t.trackNo || i + 1, listName: body.listName || '', status: 'queued', progress: 0 };
+      const job = { id: nextId++, track: t, trackNo: t.trackNo || i + 1, listName: body.listName || '', status: 'queued', progress: 0 };
       jobs.set(job.id, job);
       ids.push(job.id);
       broadcast('job', publicJob(job));
@@ -328,7 +334,7 @@ const routes = {
     if (body.videoId) Object.assign(track, { videoId: body.videoId, videoTitle: body.videoTitle });
     else delete track.videoId;
     // Nach einer Spotify-Auswahl den besten YouTube-Treffer ohne erneute Rückfrage nehmen
-    update(j, { track, auto: true, match: null, videoId: null, status: 'queued', progress: 0, error: null });
+    update(j, { track, match: null, saved: null, suggestion: null, videoId: null, status: 'queued', progress: 0, error: null });
     pump();
     return { ok: true };
   },

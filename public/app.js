@@ -104,8 +104,8 @@ function renderList() {
       if (t.searching) match = '<span class="muted">sucht …</span>';
       else if (t.candidates?.length) {
         const best = t.candidates.find((c) => c.id === t.videoId);
-        const unsure = !t.manual && best && best.score < minScore;
-        match = (unsure ? `<div class="uncertain">⚠ nicht eindeutig – <button class="small" data-act="suggest" data-i="${i}">Vorschläge</button></div>` : '') + `<select data-i="${i}" class="cand">${t.candidates
+        const unsure = !t.manual && best && !best.auto;
+        match = (unsure ? `<div class="uncertain">⚠ Nicht auf YouTube Music gefunden – YouTube-Vorschlag: <button class="small" data-act="acceptRow" data-i="${i}">übernehmen</button> <button class="small ghost" data-act="suggest" data-i="${i}">andere …</button></div>` : '') + `<select data-i="${i}" class="cand">${t.candidates
           .map((c) => `<option value="${c.id}" ${c.id === t.videoId ? 'selected' : ''}>${c.source === 'ytmusic' ? '♪ ' : ''}${esc(c.title)}${c.channel && c.source !== 'ytmusic' ? ' · ' + esc(c.channel) : ''}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</option>`)
           .join('')}</select>`;
       } else if (t.videoId) match = `<a href="https://www.youtube.com/watch?v=${t.videoId}" target="_blank" rel="noopener">▶ ${esc(t.videoTitle || t.videoId)}</a>`;
@@ -156,6 +156,9 @@ $('#trackBody').addEventListener('click', async (e) => {
     renderList();
   } else if (btn.dataset.act === 'match') {
     await matchTracks([t]);
+  } else if (btn.dataset.act === 'acceptRow') {
+    t.manual = true;
+    renderList();
   } else if (btn.dataset.act === 'suggest') {
     openPicker(t, async (choice) => {
       if (choice.track) {
@@ -213,7 +216,7 @@ $('#btnDownload').addEventListener('click', (e) =>
       .map(({ title, artist, album, genre, duration, videoId, videoTitle, trackNo, candidates, manual }) => {
         // Unsichere, nicht bestätigte Treffer nicht blind übernehmen – der Server fragt dann nach
         const best = candidates?.find((c) => c.id === videoId);
-        if (best && !manual && best.score < minScore) videoId = undefined;
+        if (best && !manual && !best.auto) videoId = undefined;
         return { title, artist, album, genre, duration, videoId, videoTitle, trackNo };
       });
     if (!tracks.length) throw new Error('Keine Titel ausgewählt');
@@ -332,8 +335,12 @@ function renderJobs() {
   ul.innerHTML = all
     .map((j) => {
       const t = j.track;
+      const spotifyName = t.artist ? `${t.artist} – ${t.title}` : t.title;
+      const savedName = j.saved ? (j.saved.artist ? `${j.saved.artist} – ${j.saved.title}` : j.saved.title) : null;
       const sub = j.status === 'review'
-        ? 'Nicht eindeutig gefunden – bitte richtigen Song auswählen'
+        ? j.suggestion
+          ? `Nicht auf YouTube Music gefunden – Vorschlag: <a href="${esc(j.suggestion.url)}" target="_blank" rel="noopener">${esc(j.suggestion.title)}</a>${j.suggestion.channel ? ' · ' + esc(j.suggestion.channel) : ''}${j.suggestion.duration ? ' · ' + fmtDur(j.suggestion.duration) : ''}`
+          : 'Nichts Passendes gefunden – bitte selbst auswählen'
         : j.status === 'error'
         ? esc(j.error)
         : j.match ? `▶ <a href="${esc(j.match.url)}" target="_blank" rel="noopener">${esc(j.match.title)}</a>${j.match.channel ? ' · ' + esc(j.match.channel) : ''}` : esc(j.listName);
@@ -345,10 +352,13 @@ function renderJobs() {
         actions += `<button class="small ghost" data-job="${j.id}" data-act="retry" title="Erneut versuchen">↻</button>`;
         actions += `<button class="small primary" data-job="${j.id}" data-act="pick" title="Anderen Treffer, Spotify-Song oder YouTube-Link wählen">Andere Quelle</button>`;
       }
-      if (j.status === 'review') actions += `<button class="small primary" data-job="${j.id}" data-act="pick">Auswählen</button>`;
+      if (j.status === 'review') {
+        if (j.suggestion) actions += `<button class="small primary" data-job="${j.id}" data-act="accept" title="Vorgeschlagenen YouTube-Eintrag herunterladen">Vorschlag laden</button>`;
+        actions += `<button class="small ${j.suggestion ? 'ghost' : 'primary'}" data-job="${j.id}" data-act="pick">${j.suggestion ? 'Andere wählen' : 'Auswählen'}</button>`;
+      }
       if (j.file) actions += `<button class="small ghost" data-job="${j.id}" data-act="show" title="Im Explorer zeigen">📂</button>`;
       return `<li>
-        <div class="job-title">${esc(t.artist ? `${t.artist} – ${t.title}` : t.title)}</div>
+        <div class="job-title" title="${savedName ? 'Gespeichert als: ' + esc(savedName) + ' · Spotify/Liste: ' + esc(spotifyName) : ''}">${esc(savedName || spotifyName)}${savedName && savedName.toLowerCase() !== spotifyName.toLowerCase() ? ` <span class="muted" style="font-weight:400">(gesucht: ${esc(spotifyName)})</span>` : ''}</div>
         <div class="job-actions">${actions}</div>
         <div class="job-sub">${sub}</div>
         ${ACTIVE.includes(j.status) ? `<div class="progress ${indet ? 'indet' : ''}"><div style="width:${indet ? '' : (j.progress || 0) + '%'}"></div></div>` : ''}
@@ -365,6 +375,9 @@ $('#jobList').addEventListener('click', (e) => {
   if (b.dataset.act === 'cancel') api('/api/cancel', { id });
   if (b.dataset.act === 'retry') api('/api/retry', { id });
   if (b.dataset.act === 'show') api('/api/open', { path: j.file });
+  if (b.dataset.act === 'accept' && j.suggestion) {
+    api('/api/resolve', { id, videoId: j.suggestion.id, videoTitle: j.suggestion.title }).catch((e) => toast(e.message, true));
+  }
   if (b.dataset.act === 'pick') {
     openPicker(j.track, (choice) => api('/api/resolve', { id, ...choice }).catch((e) => toast(e.message, true)), j.candidates, j.failedIds);
   }
