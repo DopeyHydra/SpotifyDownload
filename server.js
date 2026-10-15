@@ -354,7 +354,11 @@ const routes = {
     };
   },
 
-  'POST /api/match': async (body) => ({ candidates: (await yt.findMatch(body.track || {})).candidates.slice(0, 10) }),
+  'POST /api/match': async (body) => {
+    const res = await yt.findMatch(body.track || {}, { withYoutube: true });
+    yt.dropInfo(res.info);
+    return { candidates: res.candidates.slice(0, 12) };
+  },
 
   'POST /api/download': (body) => {
     const ids = [];

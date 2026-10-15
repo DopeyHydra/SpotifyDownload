@@ -105,9 +105,7 @@ function renderList() {
       else if (t.candidates?.length) {
         const best = t.candidates.find((c) => c.id === t.videoId);
         const unsure = !t.manual && best && !best.auto;
-        match = (unsure ? `<div class="uncertain">⚠ Nicht auf YouTube Music gefunden – YouTube-Vorschlag: <button class="small" data-act="acceptRow" data-i="${i}">übernehmen</button> <button class="small ghost" data-act="suggest" data-i="${i}">andere …</button></div>` : '') + `<select data-i="${i}" class="cand">${t.candidates
-          .map((c) => `<option value="${c.id}" ${c.id === t.videoId ? 'selected' : ''}>${c.source === 'ytmusic' ? '♪ ' : ''}${esc(c.title)}${c.channel && c.source !== 'ytmusic' ? ' · ' + esc(c.channel) : ''}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</option>`)
-          .join('')}</select>`;
+        match = (unsure ? `<div class="uncertain">⚠ Nicht auf YouTube Music gefunden – YouTube-Vorschlag: <button class="small" data-act="acceptRow" data-i="${i}">übernehmen</button> <button class="small ghost" data-act="suggest" data-i="${i}">andere …</button></div>` : '') + `<select data-i="${i}" class="cand">${candidateOptions(t)}</select>`;
       } else if (t.videoId) match = `<a href="https://www.youtube.com/watch?v=${t.videoId}" target="_blank" rel="noopener">▶ ${esc(t.videoTitle || t.videoId)}</a>`;
       else if (t.candidates) match = `<span class="uncertain">⚠ nichts gefunden – <button class="small" data-act="suggest" data-i="${i}">Vorschläge</button></span>`;
       else match = `<button class="small ghost" data-act="match" data-i="${i}">automatisch · prüfen</button>`;
@@ -938,3 +936,15 @@ $('#btnCookieFile').addEventListener('click', (e) =>
     if (path) $('#formSettings').elements.ytCookiesFile.value = path;
   }),
 );
+
+// Auswahlliste der Treffer, getrennt nach YouTube Music und normalen YouTube-Videos
+function candidateOptions(t) {
+  const opt = (c) =>
+    `<option value="${c.id}" ${c.id === t.videoId ? 'selected' : ''}>${c.auto ? '✔ ' : ''}${esc(c.title)}${c.source === 'youtube' && c.channel ? ' · ' + esc(c.channel) : ''}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</option>`;
+  const music = t.candidates.filter((c) => c.source === 'ytmusic');
+  const videos = t.candidates.filter((c) => c.source !== 'ytmusic');
+  return (
+    (music.length ? `<optgroup label="♪ YouTube Music">${music.map(opt).join('')}</optgroup>` : '') +
+    (videos.length ? `<optgroup label="▶ YouTube (Vorschläge)">${videos.map(opt).join('')}</optgroup>` : '')
+  );
+}
