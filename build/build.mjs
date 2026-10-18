@@ -103,7 +103,10 @@ step('Prüfen, dass keine Zugangsdaten im Paket landen');
   const scan = (dir) =>
     fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? scan(path.join(dir, e.name)) : [path.join(dir, e.name)]));
   for (const f of [...scan(APP), path.join(OUT, 'app.cjs')]) {
-    if (path.basename(f).toLowerCase() === 'config.json') throw new Error(`config.json darf nicht ins Paket: ${f}`);
+    const lower = f.toLowerCase();
+    if (['config.json', 'yt-cookies.txt'].includes(path.basename(lower)) || lower.includes('yt-login-profile')) {
+      throw new Error(`Persönliche Daten dürfen nicht ins Paket: ${f}`);
+    }
     const data = fs.readFileSync(f);
     for (const s of secrets) {
       if (data.includes(Buffer.from(s)) || data.includes(Buffer.from(s, 'utf16le'))) {

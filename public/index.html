@@ -136,7 +136,7 @@
         <span><strong>⏸ Warteschlange pausiert.</strong> <span id="queuePausedText"></span></span>
         <span class="paused-actions">
           <button class="small primary" id="btnResume">Fortsetzen</button>
-          <button class="small ghost" id="btnPausedSettings">YouTube-Cookies einrichten</button>
+          <button class="small" id="btnPausedLogin">Bei YouTube anmelden</button>
         </span>
       </div>
       <div id="overall" class="progress big"><div></div></div>
@@ -196,8 +196,15 @@
       </fieldset>
       <fieldset>
         <legend>YouTube-Anmeldung (nur bei Bot-Sperre)</legend>
-        <p class="hint" style="margin:0">Meldet YouTube „Bestätige, dass du kein Bot bist“, kann eine angemeldete YouTube-Sitzung genutzt werden.
-          Chrome und Edge verschlüsseln ihre Cookies unter Windows so, dass sie nicht direkt gelesen werden können – daher einmalig eine <b>cookies.txt</b> exportieren:</p>
+        <p class="hint" style="margin:0">Meldet YouTube „Bestätige, dass du kein Bot bist“, braucht es eine angemeldete YouTube-Sitzung.
+          „Bei YouTube anmelden“ öffnet dafür ein eigenes Browserfenster (getrennt von deinem normalen Browser). Dort anmelden – evtl. Captcha/Bestätigung beantworten – und das Fenster schließen. Am besten mit einem Zweitkonto.</p>
+        <div class="row yt-login">
+          <span id="ytLoginState" class="muted"></span>
+          <button type="button" id="btnYtLogin">Bei YouTube anmelden</button>
+        </div>
+        <details class="paste">
+          <summary>Manuell: eigene cookies.txt verwenden</summary>
+        <p class="hint">Chrome und Edge verschlüsseln ihre Cookies unter Windows, daher ggf. per Erweiterung exportieren:</p>
         <ol class="hint cookie-steps">
           <li>In Chrome die Erweiterung <a href="https://chromewebstore.google.com/search/Get%20cookies.txt%20LOCALLY" target="_blank" rel="noopener">„Get cookies.txt LOCALLY“</a> installieren und unter „Details“ <i>Im Inkognito-Modus zulassen</i> aktivieren.</li>
           <li>Ein <b>Inkognito-Fenster</b> öffnen, auf youtube.com anmelden (am besten mit einem Zweitkonto).</li>
@@ -214,6 +221,7 @@
         <label id="ytCookiesFileRow">Pfad zur cookies.txt
           <span class="row"><input name="ytCookiesFile" placeholder="C:\Users\…\Downloads\www.youtube.com_cookies.txt" /><button type="button" id="btnCookieFile">Durchsuchen …</button></span>
         </label>
+        </details>
       </fieldset>
       <fieldset>
         <legend>Programm</legend>

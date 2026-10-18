@@ -4,4 +4,6 @@ build/out/
 bin/
 downloads/
 config.json
+yt-login-profile/
+yt-cookies.txt
 app.log

@@ -411,6 +411,7 @@ function connect() {
   es.addEventListener('tools', (e) => setToolStatus(JSON.parse(e.data)));
   es.addEventListener('dups', (e) => onDupProgress(JSON.parse(e.data)));
   es.addEventListener('queue', (e) => renderQueuePaused(JSON.parse(e.data)));
+  es.addEventListener('ytlogin', (e) => onYtLogin(JSON.parse(e.data)));
   es.addEventListener('spotify', (e) => {
     const { user } = JSON.parse(e.data);
     renderSpotifyLogin(user);
@@ -445,6 +446,7 @@ $('#btnSettings').addEventListener('click', async () => {
   const { config, version, update } = await api('/api/status');
   $('#settingsVersion').textContent = 'v' + version;
   renderSpotifyLogin(config.spotifyUser);
+  api('/api/status').then((s) => renderYtLogin(s.ytLogin)).catch(() => {});
   toggleCookieFile();
   $('#updateCheckResult').textContent = update?.available ? `v${update.latest} verfügbar` : '';
   const f = $('#formSettings');
@@ -921,7 +923,7 @@ function renderQueuePaused(p) {
 }
 
 $('#btnResume').addEventListener('click', (e) => busy(e.currentTarget, () => api('/api/queue/resume', {})));
-$('#btnPausedSettings').addEventListener('click', () => $('#btnSettings').click());
+$('#btnPausedLogin').addEventListener('click', () => startYtLogin());
 
 function toggleCookieFile() {
   $('#ytCookiesFileRow').hidden = $('#formSettings').elements.ytCookies.value !== 'file';
@@ -948,3 +950,47 @@ function candidateOptions(t) {
     (videos.length ? `<optgroup label="▶ YouTube (Vorschläge)">${videos.map(opt).join('')}</optgroup>` : '')
   );
 }
+
+// ---------- "Bei YouTube anmelden" ----------
+
+let ytLoggedIn = false;
+function renderYtLogin(st) {
+  if (!st) return;
+  ytLoggedIn = !!st.loggedIn;
+  const el = $('#ytLoginState');
+  el.textContent = st.running ? 'Anmeldefenster ist offen …' : ytLoggedIn ? '✔ Bei YouTube angemeldet' : st.browser ? 'Nicht angemeldet' : 'Chrome oder Edge wird benötigt';
+  el.className = ytLoggedIn ? 'ok' : 'muted';
+  $('#btnYtLogin').textContent = ytLoggedIn ? 'Abmelden' : 'Bei YouTube anmelden';
+  $('#btnYtLogin').disabled = !!st.running || !st.browser;
+}
+
+async function startYtLogin() {
+  try {
+    await api('/api/yt/login', {});
+    $('#ytLoginState').textContent = 'Anmeldefenster ist offen …';
+    $('#btnYtLogin').disabled = true;
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function onYtLogin(st) {
+  if (st.state === 'browser') {
+    toast(st.message);
+    $('#queuePausedText').textContent = st.message;
+  } else if (st.state === 'done') {
+    toast('✔ ' + st.message + ' Downloads laufen weiter.');
+    const f = $('#formSettings');
+    f.elements.ytCookies.value = 'file';
+    toggleCookieFile();
+  } else if (st.state === 'error') toast(st.message, true);
+  api('/api/status').then((s) => renderYtLogin(s.ytLogin)).catch(() => {});
+}
+
+$('#btnYtLogin').addEventListener('click', async (e) => {
+  if (!ytLoggedIn) return startYtLogin();
+  await busy(e.currentTarget, () => api('/api/yt/logout', {}));
+  $('#formSettings').elements.ytCookies.value = '';
+  toggleCookieFile();
+  api('/api/status').then((s) => renderYtLogin(s.ytLogin)).catch(() => {});
+});

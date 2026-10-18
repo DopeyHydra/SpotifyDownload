@@ -65,4 +65,6 @@ end;
 Type: filesandordirs; Name: "{app}\bin"
 Type: files; Name: "{app}\config.json"
 Type: files; Name: "{app}\app.log"
+Type: filesandordirs; Name: "{app}\yt-login-profile"
+Type: files; Name: "{app}\yt-cookies.txt"
 Type: dirifempty; Name: "{app}"

@@ -11,6 +11,7 @@ const spotify = require('./lib/spotify');
 const yt = require('./lib/youtube');
 const updater = require('./lib/updater');
 const dups = require('./lib/duplicates');
+const ytlogin = require('./lib/ytlogin');
 
 const PORT = Number(process.env.PORT) || 3456;
 const CONFIG_FILE = path.join(paths.APP_DIR, 'config.json');
@@ -98,6 +99,12 @@ function update(job, patch) {
 
 // Blockiert YouTube (Bot-Schutz), wird die Warteschlange pausiert statt weiter Anfragen zu senden
 let queuePaused = null;
+let ytLoginRunning = false;
+
+function ytLoginState() {
+  const st = ytlogin.status();
+  return { browser: st.available, loggedIn: config.ytCookies === 'file' && config.ytCookiesFile === ytlogin.COOKIE_FILE && !!st.cookieFile, running: ytLoginRunning };
+}
 function pauseQueue(reason) {
   if (queuePaused) return;
   queuePaused = { reason, since: Date.now() };
@@ -292,7 +299,7 @@ function streamDupFile(req, res, file) {
 }
 
 const routes = {
-  'GET /api/status': () => ({ queuePaused, version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: publicConfig() }),
+  'GET /api/status': () => ({ queuePaused, ytLogin: ytLoginState(), version: paths.VERSION, packaged: paths.IS_PACKAGED, update: updater.getState(), tools: tools.getStatus(), minScore: yt.MIN_SCORE, config: publicConfig() }),
 
   'POST /api/config': (body) => {
     const oldClientId = config.spotifyClientId;
@@ -323,7 +330,11 @@ const routes = {
     return { ok: true };
   },
 
-  'POST /api/queue/resume': () => {
+  'POST /api/queue/resume': async () => {
+    // Mit "Bei YouTube anmelden" angemeldet → Anmeldung vor dem Fortsetzen auffrischen
+    if (config.ytCookiesFile === ytlogin.COOKIE_FILE && ytlogin.status().hasProfile) {
+      await ytlogin.exportCookies().catch((e) => console.warn('Cookies auffrischen fehlgeschlagen:', e.message));
+    }
     queuePaused = null;
     broadcast('queue', null);
     pump();
@@ -423,6 +434,39 @@ const routes = {
   },
 
   'POST /api/pick-folder': () => pickFolder(config.outputDir),
+
+  // "Bei YouTube anmelden": eigenes Browserfenster, danach Cookies automatisch übernehmen
+  'POST /api/yt/login': () => {
+    if (ytLoginRunning) throw new Error('Das Anmeldefenster ist bereits offen');
+    ytLoginRunning = true;
+    ytlogin
+      .login((st) => broadcast('ytlogin', st))
+      .then((res) => {
+        if (!res.loggedIn) {
+          return broadcast('ytlogin', { state: 'error', message: 'Keine YouTube-Anmeldung gefunden – bitte im Fenster bei YouTube anmelden und es erst danach schließen.' });
+        }
+        Object.assign(config, { ytCookies: 'file', ytCookiesFile: res.file });
+        saveConfig();
+        yt.setAuth(config);
+        broadcast('ytlogin', { state: 'done', message: 'Bei YouTube angemeldet.' });
+        if (queuePaused) {
+          queuePaused = null;
+          broadcast('queue', null);
+          pump();
+        }
+      })
+      .catch((e) => broadcast('ytlogin', { state: 'error', message: e.message }))
+      .finally(() => (ytLoginRunning = false));
+    return { ok: true };
+  },
+
+  'POST /api/yt/logout': () => {
+    ytlogin.logout();
+    if (config.ytCookiesFile === ytlogin.COOKIE_FILE) Object.assign(config, { ytCookies: '', ytCookiesFile: '' });
+    saveConfig();
+    yt.setAuth(config);
+    return { ok: true };
+  },
   'POST /api/pick-cookies': () => pickFile('Cookie-Datei (*.txt)|*.txt|Alle Dateien (*.*)|*.*'),
 
   // Spotify-Benutzeranmeldung (nötig für Playlist-Inhalte)

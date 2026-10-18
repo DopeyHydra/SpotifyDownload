@@ -26,7 +26,7 @@ Beim ersten Start werden `yt-dlp` und `ffmpeg` automatisch nach `bin/` herunterg
 ### Wenn YouTube blockiert
 
 Bei sehr vielen Downloads am Stück aktiviert YouTube manchmal einen Bot-Schutz („Bestätige, dass du kein Bot bist“). Das Programm **pausiert dann die Warteschlange**, statt weitere Anfragen zu senden. Die Songs bleiben erhalten, später geht es mit **Fortsetzen** weiter. Die Sperre hebt sich meist nach einigen Stunden auf.
-Alternativ kann unter ⚙ → *YouTube-Anmeldung* eine **cookies.txt** einer angemeldeten YouTube-Sitzung hinterlegt werden. Eine Anleitung steht dort. Chrome- und Edge-Cookies lassen sich unter Windows nicht direkt lesen.
+Damit es weitergeht, im Pausen-Hinweis oder unter ⚙ auf **„Bei YouTube anmelden“** klicken. Es öffnet sich ein eigenes Browserfenster (Chrome oder Edge, getrennt vom normalen Browser). Dort bei YouTube anmelden, eine eventuelle Google-Bestätigung beantworten und das Fenster schließen. Das Programm übernimmt die Anmeldung automatisch und setzt die Downloads fort. Bei „Fortsetzen“ wird die Anmeldung aus diesem Fenster-Profil aufgefrischt. Alternativ lässt sich eine eigene cookies.txt hinterlegen.
 
 ## Duplikate finden
 

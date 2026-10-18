@@ -203,6 +203,9 @@ legend { font-weight: 600; padding: 0 4px; }
 .spotify-login span { flex: 1; min-width: 180px; }
 .spotify-login span.ok { color: var(--accent); font-weight: 600; }
 
+.yt-login { align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; }
+.yt-login span { flex: 1; min-width: 180px; }
+.yt-login span.ok { color: var(--accent); font-weight: 600; }
 .cookie-steps { margin: 0; padding-left: 20px; display: grid; gap: 3px; }
 .paused-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .paused-bar[hidden] { display: none; }
