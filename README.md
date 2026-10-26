@@ -19,14 +19,15 @@ Beim ersten Start werden `yt-dlp` und `ffmpeg` automatisch nach `bin/` herunterg
 
 ## Treffer-Suche
 
-- **Automatisch wird nur YouTube Music durchsucht.** Ein Treffer wird nur übernommen, wenn Titel, Interpret und Dauer zum gesuchten Song passen. Remix-, Live-, Cover- und „Sped up“-Versionen werden ausgeschlossen, wenn das Original sie nicht enthält.
+- **Automatisch wird nur YouTube Music durchsucht**, und zwar über die Suche von music.youtube.com selbst. Sie liefert Interpret, Album, Dauer und das echte Albumcover direkt mit, deshalb ruft YouTube pro Song nur einmal ein Video ab, nämlich beim Download.
+- Ein Treffer wird nur übernommen, wenn Titel, Interpret und Dauer zum gesuchten Song passen. Remix-, Live-, Cover- und „Sped up“-Versionen werden ausgeschlossen, wenn das Original sie nicht enthält.
 - **Passt nichts**, wird der beste normale YouTube-Eintrag nur **vorgeschlagen**. Der Download steht dann auf „Auswahl nötig“. Mit **Vorschlag laden** bestätigst du ihn, mit **Andere wählen** suchst du selbst, auch über Spotify-Vorschläge oder einen eigenen YouTube-Link.
 - **Dateiname, Tags und Cover** kommen immer vom tatsächlich heruntergeladenen Song, also Interpret, Titel, Album und Jahr von YouTube Music bzw. aus dem Videotitel. Weicht das von der Liste ab, zeigt die Download-Liste beides an.
 
 ### Wenn YouTube blockiert
 
 Bei sehr vielen Downloads am Stück aktiviert YouTube manchmal einen Bot-Schutz („Bestätige, dass du kein Bot bist“). Das Programm **pausiert dann die Warteschlange**, statt weitere Anfragen zu senden. Die Songs bleiben erhalten, später geht es mit **Fortsetzen** weiter. Die Sperre hebt sich meist nach einigen Stunden auf.
-Damit es weitergeht, im Pausen-Hinweis oder unter ⚙ auf **„Bei YouTube anmelden“** klicken. Es öffnet sich ein eigenes Browserfenster (Chrome oder Edge, getrennt vom normalen Browser). Dort bei YouTube anmelden, eine eventuelle Google-Bestätigung beantworten und das Fenster schließen. Das Programm übernimmt die Anmeldung automatisch und setzt die Downloads fort. Bei „Fortsetzen“ wird die Anmeldung aus diesem Fenster-Profil aufgefrischt. Alternativ lässt sich eine eigene cookies.txt hinterlegen.
+Damit es weitergeht, im Pausen-Hinweis oder unter ⚙ auf **„Bei YouTube anmelden“** klicken. Es öffnet sich ein eigenes Browserfenster (Chrome oder Edge, getrennt vom normalen Browser). Dort bei YouTube anmelden, eine eventuelle Google-Bestätigung beantworten und das Fenster schließen. Das Programm übernimmt die Anmeldung automatisch und setzt die Downloads fort. Blockt YouTube trotz Anmeldung, wird die Sitzung automatisch aus dem Fenster-Profil aufgefrischt und der Song erneut versucht. Hilft das nicht, baut **„Sitzung zurücksetzen“** eine komplett neue Sitzung auf. Alternativ lässt sich eine eigene cookies.txt hinterlegen.
 
 ## Duplikate finden
 

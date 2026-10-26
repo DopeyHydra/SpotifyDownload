@@ -99,6 +99,8 @@ function update(job, patch) {
 
 // Blockiert YouTube (Bot-Schutz), wird die Warteschlange pausiert statt weiter Anfragen zu senden
 let queuePaused = null;
+let lastSessionRefresh = 0;
+let refreshing = null;
 let ytLoginRunning = false;
 
 function ytLoginState() {
@@ -114,6 +116,7 @@ function pauseQueue(reason) {
 
 function pump() {
   if (!tools.getStatus().ready || queuePaused) return;
+  if (refreshing) return void refreshing.then(() => pump());
   while (running < Math.max(1, Number(config.concurrency) || 1)) {
     const job = [...jobs.values()].find((j) => j.status === 'queued');
     if (!job) return;
@@ -121,10 +124,23 @@ function pump() {
     processJob(job)
       .catch((e) => {
         if (e.code === 'BOT' || e.code === 'COOKIES') {
-          // Kein Fehler des Songs → zurück in die Warteschlange, alles pausieren
-          pauseQueue(e.message);
-          return update(job, { status: 'queued', progress: 0, error: null });
+          // Kein Fehler des Songs → zurück in die Warteschlange
+          update(job, { status: 'queued', progress: 0, error: null });
+          const loginActive = config.ytCookiesFile === ytlogin.COOKIE_FILE && ytlogin.status().hasProfile;
+          if (e.code === 'BOT' && loginActive && Date.now() - lastSessionRefresh > 3 * 60000) {
+            // Angemeldet: Sitzung aus dem Anmelde-Profil neu aufbauen und weitermachen
+            lastSessionRefresh = Date.now();
+            console.warn('Bot-Sperre trotz Anmeldung – frische Sitzung auf');
+            refreshing = ytlogin
+              .exportCookies()
+              .catch((err) => console.warn('Auffrischen fehlgeschlagen:', err.message))
+              .finally(() => (refreshing = null));
+            return;
+          }
+          pauseQueue(loginActive ? 'YouTube blockiert trotz Anmeldung. Bitte „Sitzung zurücksetzen“ und neu anmelden – oder später fortsetzen.' : e.message);
+          return;
         }
+        console.warn(`Download fehlgeschlagen (${job.track.artist} – ${job.track.title}): ${e.message}`);
         // Fehlgeschlagene Quelle merken, damit sie bei der nächsten Auswahl nicht wieder genommen wird
         const failedIds = job.videoId && !job.failedIds?.includes(job.videoId) ? [...(job.failedIds || []), job.videoId] : job.failedIds;
         update(job, { status: 'error', error: e.message, failedIds });
@@ -143,6 +159,7 @@ async function processJob(job) {
 
   let videoId = t.videoId;
   let info = null;
+  let meta = null;
   if (!videoId) {
     // Automatisch nur YouTube Music – passt nichts, wird ein YouTube-Treffer nur vorgeschlagen
     update(job, { status: 'searching' });
@@ -153,7 +170,11 @@ async function processJob(job) {
       return update(job, { status: 'review', candidates: res.candidates.slice(0, 8), suggestion, match: null });
     }
     videoId = res.auto.id;
+    meta = res.meta;
     info = res.info;
+  } else if (t.videoMeta) {
+    // In der Liste gewählter YouTube-Music-Treffer: Metadaten liegen schon vor
+    meta = t.videoMeta;
   } else {
     update(job, { status: 'searching' });
     info = await yt.getInfo(videoId);
@@ -161,25 +182,27 @@ async function processJob(job) {
   }
 
   try {
-    await downloadWithInfo(job, dir, videoId, info);
+    await downloadWithInfo(job, dir, videoId, info, meta || yt.metaFromInfo(info));
   } finally {
     yt.dropInfo(info);
   }
 }
 
-async function downloadWithInfo(job, dir, videoId, info) {
+async function downloadWithInfo(job, dir, videoId, info, meta) {
   // Dateiname, Tags und Cover kommen vom tatsächlich heruntergeladenen Song – nicht aus der Spotify-Liste
-  const meta = yt.metaFromInfo(info);
+  const fromMusic = !!meta.cover || !!info?.track;
   const base = yt.trackBaseName(meta);
   const target = path.join(dir, `${base}.${config.format}`);
   update(job, {
     saved: { title: meta.title, artist: meta.artist, album: meta.album },
-    match: { id: videoId, title: info.track ? `${meta.artist} – ${meta.title}` : info.title, channel: meta.album ? `Album: ${meta.album}` : info.channel, url: `https://www.youtube.com/watch?v=${videoId}`, source: info.track ? 'ytmusic' : 'youtube' },
+    match: { id: videoId, title: fromMusic ? `${meta.artist} – ${meta.title}` : info?.title || meta.title, channel: meta.album ? `Album: ${meta.album}` : info?.channel || '', url: `https://www.youtube.com/watch?v=${videoId}`, source: fromMusic ? 'ytmusic' : 'youtube' },
   });
   if (fs.existsSync(target)) return update(job, { status: 'exists', progress: 100, file: target });
 
+  // Echtes Albumcover von YouTube Music (quadratisch, 1200 px) statt Video-Vorschaubild
+  const coverFile = await yt.fetchCover(meta.cover);
   update(job, { status: 'downloading', progress: 0, videoId });
-  const dl = yt.downloadAudio({ videoId, infoFile: info.infoFile, dir, base, format: config.format, quality: config.quality }, (ev) => {
+  const dl = yt.downloadAudio({ videoId, infoFile: info?.infoFile, dir, base, format: config.format, quality: config.quality, ownCover: !!coverFile }, (ev) => {
     if (ev.type === 'progress' && Math.abs(ev.value - (job.progress || 0)) >= 2) update(job, { progress: ev.value });
     if (ev.type === 'stage' && job.status !== 'converting') update(job, { status: 'converting', progress: 100 });
   });
@@ -188,11 +211,13 @@ async function downloadWithInfo(job, dir, videoId, info) {
   try {
     file = await dl.promise;
   } catch (e) {
+    if (coverFile) fs.rm(coverFile, { force: true }, () => {});
     if (job.status === 'cancelled') return;
     throw e;
   }
   update(job, { status: 'converting' });
-  await yt.writeTags(file, meta, job.trackNo);
+  await yt.writeTags(file, meta, job.trackNo, coverFile);
+  if (coverFile) fs.rm(coverFile, { force: true }, () => {});
   update(job, { status: 'done', progress: 100, file });
 }
 
@@ -460,6 +485,12 @@ const routes = {
     return { ok: true };
   },
 
+  'POST /api/yt/reset': () => {
+    if (ytLoginRunning) throw new Error('Das Anmeldefenster ist bereits offen');
+    ytlogin.logout();
+    return routes['POST /api/yt/login']();
+  },
+
   'POST /api/yt/logout': () => {
     ytlogin.logout();
     if (config.ytCookiesFile === ytlogin.COOKIE_FILE) Object.assign(config, { ytCookies: '', ytCookiesFile: '' });
@@ -650,6 +681,16 @@ server.on('error', async (e) => {
   port++;
   server.listen(port, '127.0.0.1');
 });
+
+// Reste abgebrochener Läufe (Info-Dateien, Cookie-Kopien, Cover) aus dem Temp-Ordner entfernen
+try {
+  const tmp = require('os').tmpdir();
+  for (const f of fs.readdirSync(tmp)) {
+    if (!f.startsWith('spotify-downloader-')) continue;
+    const p = path.join(tmp, f);
+    if (Date.now() - fs.statSync(p).mtimeMs > 6 * 3600 * 1000) fs.rmSync(p, { force: true });
+  }
+} catch {}
 
 server.listen(port, '127.0.0.1', () => {
   URL_BASE = `http://localhost:${port}`;

@@ -137,6 +137,7 @@
         <span class="paused-actions">
           <button class="small primary" id="btnResume">Fortsetzen</button>
           <button class="small" id="btnPausedLogin">Bei YouTube anmelden</button>
+          <button class="small" id="btnPausedReset" hidden>Sitzung zurücksetzen</button>
         </span>
       </div>
       <div id="overall" class="progress big"><div></div></div>
@@ -200,6 +201,7 @@
           „Bei YouTube anmelden“ öffnet dafür ein eigenes Browserfenster (getrennt von deinem normalen Browser). Dort anmelden – evtl. Captcha/Bestätigung beantworten – und das Fenster schließen. Am besten mit einem Zweitkonto.</p>
         <div class="row yt-login">
           <span id="ytLoginState" class="muted"></span>
+          <button type="button" id="btnYtReset" hidden title="Sitzung löschen und neu anmelden">Sitzung zurücksetzen</button>
           <button type="button" id="btnYtLogin">Bei YouTube anmelden</button>
         </div>
         <details class="paste">

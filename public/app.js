@@ -215,7 +215,10 @@ $('#btnDownload').addEventListener('click', (e) =>
         // Unsichere, nicht bestätigte Treffer nicht blind übernehmen – der Server fragt dann nach
         const best = candidates?.find((c) => c.id === videoId);
         if (best && !manual && !best.auto) videoId = undefined;
-        return { title, artist, album, genre, duration, videoId, videoTitle, trackNo };
+        // Automatische Treffer sucht der Server selbst (frische Daten); gewählte YouTube-Music-Treffer bringen ihre Metadaten mit
+        if (best && best.auto && !manual) videoId = undefined;
+        const videoMeta = videoId && best?.meta ? best.meta : undefined;
+        return { title, artist, album, genre, duration, videoId, videoTitle, videoMeta, trackNo };
       });
     if (!tracks.length) throw new Error('Keine Titel ausgewählt');
     await api('/api/download', { listName: list.name, tracks });
@@ -919,6 +922,7 @@ $('#btnSpotifyLogin').addEventListener('click', (e) =>
 
 function renderQueuePaused(p) {
   $('#queuePausedBar').hidden = !p;
+  if (p) api('/api/status').then((s) => renderYtLogin(s.ytLogin)).catch(() => {});
   if (p) $('#queuePausedText').textContent = p.reason;
 }
 
@@ -962,6 +966,9 @@ function renderYtLogin(st) {
   el.className = ytLoggedIn ? 'ok' : 'muted';
   $('#btnYtLogin').textContent = ytLoggedIn ? 'Abmelden' : 'Bei YouTube anmelden';
   $('#btnYtLogin').disabled = !!st.running || !st.browser;
+  $('#btnYtReset').hidden = !ytLoggedIn;
+  $('#btnPausedReset').hidden = !ytLoggedIn;
+  $('#btnPausedLogin').hidden = ytLoggedIn;
 }
 
 async function startYtLogin() {
@@ -986,6 +993,15 @@ function onYtLogin(st) {
   } else if (st.state === 'error') toast(st.message, true);
   api('/api/status').then((s) => renderYtLogin(s.ytLogin)).catch(() => {});
 }
+
+$('#btnYtReset').addEventListener('click', (e) =>
+  busy(e.currentTarget, async () => {
+    if (!confirm('Die YouTube-Sitzung wird gelöscht und ein neues Anmeldefenster geöffnet. Fortfahren?')) return;
+    await api('/api/yt/reset', {});
+    $('#ytLoginState').textContent = 'Anmeldefenster ist offen …';
+  }),
+);
+$('#btnPausedReset').addEventListener('click', () => $('#btnYtReset').click());
 
 $('#btnYtLogin').addEventListener('click', async (e) => {
   if (!ytLoggedIn) return startYtLogin();

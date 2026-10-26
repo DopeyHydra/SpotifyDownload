@@ -91,6 +91,8 @@ for (const f of ['yt-dlp.exe', 'ffmpeg.exe', 'ffprobe.exe']) {
   if (!fs.existsSync(src)) throw new Error(`${src} fehlt – einmal "npm start" ausführen, damit die Werkzeuge geladen werden`);
   fs.copyFileSync(src, path.join(APP, 'bin', f));
 }
+// JavaScript-Laufzeit für yt-dlp (YouTube-Signaturprüfung, nötig mit Anmeldung)
+fs.copyFileSync(process.execPath, path.join(APP, 'bin', 'node.exe'));
 fs.copyFileSync(path.join(ROOT, 'README.md'), path.join(APP, 'README.md'));
 
 step('Prüfen, dass keine Zugangsdaten im Paket landen');
