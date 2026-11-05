@@ -15,13 +15,14 @@ Beim ersten Start werden `yt-dlp` und `ffmpeg` automatisch nach `bin/` herunterg
 | Spotify-Link | Playlist, Album oder Track. Ohne API-Zugang höchstens 100 Titel pro Playlist. |
 | Playlists finden | Sucht Playlists auf YouTube und, mit API-Zugang, auch auf Spotify. Ein Klick lädt die Playlist. |
 | YouTube-Playlist | Lädt die Videos einer Playlist direkt herunter. |
+| SoundCloud | Link zu Track, Playlist, Album, Profil oder Likes, oder ein Suchbegriff. Kopiergeschützte Titel (DRM) und 30-Sekunden-Vorschauen von Go+-Titeln lassen sich nicht laden. |
 | Einzelne Songs | Eine Zeile pro Song (`Interpret - Titel`) oder ein YouTube-Link. |
 
 ## Treffer-Suche
 
 - **Automatisch wird nur YouTube Music durchsucht**, und zwar über die Suche von music.youtube.com selbst. Sie liefert Interpret, Album, Dauer und das echte Albumcover direkt mit, deshalb ruft YouTube pro Song nur einmal ein Video ab, nämlich beim Download.
 - Ein Treffer wird nur übernommen, wenn Titel, Interpret und Dauer zum gesuchten Song passen. Remix-, Live-, Cover- und „Sped up“-Versionen werden ausgeschlossen, wenn das Original sie nicht enthält.
-- **Passt nichts**, wird der beste normale YouTube-Eintrag nur **vorgeschlagen**. Der Download steht dann auf „Auswahl nötig“. Mit **Vorschlag laden** bestätigst du ihn, mit **Andere wählen** suchst du selbst, auch über Spotify-Vorschläge oder einen eigenen YouTube-Link.
+- **Passt nichts**, wird der beste normale YouTube-Eintrag nur **vorgeschlagen**. Der Download steht dann auf „Auswahl nötig“. Mit **Vorschlag laden** bestätigst du ihn, mit **Andere wählen** suchst du selbst, auch über Spotify- und SoundCloud-Vorschläge oder einen eigenen YouTube- oder SoundCloud-Link.
 - **Dateiname, Tags und Cover** kommen immer vom tatsächlich heruntergeladenen Song, also Interpret, Titel, Album und Jahr von YouTube Music bzw. aus dem Videotitel. Weicht das von der Liste ab, zeigt die Download-Liste beides an.
 
 ### Wenn YouTube blockiert

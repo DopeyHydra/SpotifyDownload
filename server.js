@@ -9,6 +9,7 @@ const tools = require('./lib/tools');
 const { parseTxt } = require('./lib/parse');
 const spotify = require('./lib/spotify');
 const yt = require('./lib/youtube');
+const soundcloud = require('./lib/soundcloud');
 const updater = require('./lib/updater');
 const dups = require('./lib/duplicates');
 const ytlogin = require('./lib/ytlogin');
@@ -123,7 +124,7 @@ function pump() {
     running++;
     processJob(job)
       .catch((e) => {
-        if (e.code === 'BOT' || e.code === 'COOKIES') {
+        if (e.code === 'BOT' || e.code === 'COOKIES' || e.code === 'RATE') {
           // Kein Fehler des Songs → zurück in die Warteschlange
           update(job, { status: 'queued', progress: 0, error: null });
           const loginActive = config.ytCookiesFile === ytlogin.COOKIE_FILE && ytlogin.status().hasProfile;
@@ -137,7 +138,7 @@ function pump() {
               .finally(() => (refreshing = null));
             return;
           }
-          pauseQueue(loginActive ? 'YouTube blockiert trotz Anmeldung. Bitte „Sitzung zurücksetzen“ und neu anmelden – oder später fortsetzen.' : e.message);
+          pauseQueue(loginActive && e.code === 'BOT' ? 'YouTube blockiert trotz Anmeldung. Bitte „Sitzung zurücksetzen“ und neu anmelden – oder später fortsetzen.' : e.message);
           return;
         }
         console.warn(`Download fehlgeschlagen (${job.track.artist} – ${job.track.title}): ${e.message}`);
@@ -160,7 +161,13 @@ async function processJob(job) {
   let videoId = t.videoId;
   let info = null;
   let meta = null;
-  if (!videoId) {
+  if (t.sourceUrl) {
+    // SoundCloud: direkt vom Link, Metadaten vom Track selbst
+    update(job, { status: 'searching', videoId: t.sourceUrl });
+    info = await soundcloud.getInfo(t.sourceUrl);
+    if (job.status === 'cancelled') return yt.dropInfo(info);
+    meta = info.meta;
+  } else if (!videoId) {
     // Automatisch nur YouTube Music – passt nichts, wird ein YouTube-Treffer nur vorgeschlagen
     update(job, { status: 'searching' });
     const res = await yt.findMatch(t, { exclude: job.failedIds || [] });
@@ -190,19 +197,20 @@ async function processJob(job) {
 
 async function downloadWithInfo(job, dir, videoId, info, meta) {
   // Dateiname, Tags und Cover kommen vom tatsächlich heruntergeladenen Song – nicht aus der Spotify-Liste
-  const fromMusic = !!meta.cover || !!info?.track;
+  const scUrl = job.track.sourceUrl;
+  const fromMusic = !scUrl && (!!meta.cover || !!info?.track);
   const base = yt.trackBaseName(meta);
   const target = path.join(dir, `${base}.${config.format}`);
   update(job, {
     saved: { title: meta.title, artist: meta.artist, album: meta.album },
-    match: { id: videoId, title: fromMusic ? `${meta.artist} – ${meta.title}` : info?.title || meta.title, channel: meta.album ? `Album: ${meta.album}` : info?.channel || '', url: `https://www.youtube.com/watch?v=${videoId}`, source: fromMusic ? 'ytmusic' : 'youtube' },
+    match: { id: videoId, title: fromMusic ? `${meta.artist} – ${meta.title}` : info?.title || meta.title, channel: meta.album ? `Album: ${meta.album}` : info?.channel || '', url: scUrl || `https://www.youtube.com/watch?v=${videoId}`, source: scUrl ? 'soundcloud' : fromMusic ? 'ytmusic' : 'youtube' },
   });
   if (fs.existsSync(target)) return update(job, { status: 'exists', progress: 100, file: target });
 
   // Echtes Albumcover von YouTube Music (quadratisch, 1200 px) statt Video-Vorschaubild
   const coverFile = await yt.fetchCover(meta.cover);
-  update(job, { status: 'downloading', progress: 0, videoId });
-  const dl = yt.downloadAudio({ videoId, infoFile: info?.infoFile, dir, base, format: config.format, quality: config.quality, ownCover: !!coverFile }, (ev) => {
+  update(job, { status: 'downloading', progress: 0, videoId: videoId || scUrl });
+  const dl = yt.downloadAudio({ videoId, url: scUrl, infoFile: info?.infoFile, dir, base, format: config.format, quality: config.quality, ownCover: !!coverFile }, (ev) => {
     if (ev.type === 'progress' && Math.abs(ev.value - (job.progress || 0)) >= 2) update(job, { progress: ev.value });
     if (ev.type === 'stage' && job.status !== 'converting') update(job, { status: 'converting', progress: 100 });
   });
@@ -374,6 +382,17 @@ const routes = {
 
   'POST /api/spotify': (body) => spotify.loadSpotify(config, body.url || ''),
 
+  'POST /api/soundcloud/load': (body) => {
+    if (!soundcloud.isSoundcloudUrl(body.url)) throw new Error('Kein gültiger SoundCloud-Link');
+    return soundcloud.load(body.url.trim());
+  },
+
+  'POST /api/soundcloud/search': async (body) => {
+    const q = (body.q || '').trim();
+    if (!q) throw new Error('Bitte Suchbegriff oder Link eingeben');
+    return { name: `SoundCloud – ${q}`, tracks: (await soundcloud.search(q)).map(soundcloud.toTrack) };
+  },
+
   'POST /api/youtube-playlist': (body) => {
     if (!/youtu\.?be/.test(body.url || '')) throw new Error('Kein gültiger YouTube-Link');
     return yt.loadPlaylist(body.url);
@@ -391,9 +410,12 @@ const routes = {
   },
 
   'POST /api/match': async (body) => {
-    const res = await yt.findMatch(body.track || {}, { withYoutube: true });
+    const [res, sc] = await Promise.all([
+      yt.findMatch(body.track || {}, { withYoutube: true }),
+      soundcloud.suggestions(body.track || {}).catch(() => []),
+    ]);
     yt.dropInfo(res.info);
-    return { candidates: res.candidates.slice(0, 12) };
+    return { candidates: [...res.candidates.slice(0, 11), ...sc] };
   },
 
   'POST /api/download': (body) => {
@@ -438,10 +460,11 @@ const routes = {
     const t = body.track || {};
     const q = (body.q || '').trim();
     const spQuery = q || [yt.coreTitle(t.title || ''), yt.primaryArtist(t.artist)].filter(Boolean).join(' ');
-    const [sp, ytc] = await Promise.allSettled([spotify.searchTracks(config, spQuery), yt.searchCandidates(t, config, q || undefined)]);
+    const [sp, ytc, sc] = await Promise.allSettled([spotify.searchTracks(config, spQuery), yt.searchCandidates(t, config, q || undefined), soundcloud.suggestions(t, q || undefined)]);
     return {
       spotify: sp.status === 'fulfilled' ? sp.value : { available: true, error: sp.reason.message, results: [] },
       youtube: ytc.status === 'fulfilled' ? ytc.value.slice(0, 8) : [],
+      soundcloud: sc.status === 'fulfilled' ? sc.value : [],
     };
   },
 
@@ -450,8 +473,12 @@ const routes = {
     const j = jobs.get(body.id);
     if (!j) throw new Error('Download nicht gefunden');
     const track = { ...j.track, ...(body.track || {}) };
-    if (body.videoId) Object.assign(track, { videoId: body.videoId, videoTitle: body.videoTitle });
-    else delete track.videoId;
+    // Neue Quelle ersetzt die bisherige vollständig
+    delete track.videoId;
+    delete track.videoMeta;
+    delete track.sourceUrl;
+    if (body.sourceUrl) Object.assign(track, { sourceUrl: body.sourceUrl, videoTitle: body.videoTitle });
+    else if (body.videoId) Object.assign(track, { videoId: body.videoId, videoTitle: body.videoTitle });
     // Nach einer Spotify-Auswahl den besten YouTube-Treffer ohne erneute Rückfrage nehmen
     update(j, { track, match: null, saved: null, suggestion: null, videoId: null, status: 'queued', progress: 0, error: null });
     pump();

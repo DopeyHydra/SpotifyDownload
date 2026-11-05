@@ -33,6 +33,10 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
+function scLink(s) {
+  return /^https?:\/\/([a-z0-9-]+\.)?soundcloud\.com\//i.test(String(s).trim());
+}
+
 function ytId(url) {
   const m = String(url).match(/(?:v=|youtu\.be\/|shorts\/|^)([A-Za-z0-9_-]{11})(?:[&?#]|$)/);
   return m ? m[1] : null;
@@ -77,7 +81,7 @@ $$('.tab').forEach((tab) =>
 // ---------- Liste ----------
 
 function setList(data, append = false) {
-  const tracks = data.tracks.map((t) => ({ ...t, selected: true }));
+  const tracks = data.tracks.map((t) => ({ ...t, selected: t.selected ?? true }));
   if (append && list) list.tracks.push(...tracks);
   else list = { name: data.name, cover: data.cover, truncated: data.truncated, apiNote: data.apiNote, tracks };
   renderList();
@@ -106,7 +110,8 @@ function renderList() {
         const best = t.candidates.find((c) => c.id === t.videoId);
         const unsure = !t.manual && best && !best.auto;
         match = (unsure ? `<div class="uncertain">⚠ Nicht auf YouTube Music gefunden – YouTube-Vorschlag: <button class="small" data-act="acceptRow" data-i="${i}">übernehmen</button> <button class="small ghost" data-act="suggest" data-i="${i}">andere …</button></div>` : '') + `<select data-i="${i}" class="cand">${candidateOptions(t)}</select>`;
-      } else if (t.videoId) match = `<a href="https://www.youtube.com/watch?v=${t.videoId}" target="_blank" rel="noopener">▶ ${esc(t.videoTitle || t.videoId)}</a>`;
+      } else if (t.sourceUrl) match = `<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">☁ ${esc(t.videoTitle || t.sourceUrl)}</a>`;
+      else if (t.videoId) match = `<a href="https://www.youtube.com/watch?v=${t.videoId}" target="_blank" rel="noopener">▶ ${esc(t.videoTitle || t.videoId)}</a>`;
       else if (t.candidates) match = `<span class="uncertain">⚠ nichts gefunden – <button class="small" data-act="suggest" data-i="${i}">Vorschläge</button></span>`;
       else match = `<button class="small ghost" data-act="match" data-i="${i}">automatisch · prüfen</button>`;
       return `<tr>
@@ -128,10 +133,7 @@ $('#trackBody').addEventListener('change', (e) => {
   const i = Number(e.target.dataset.i);
   if (e.target.classList.contains('sel')) list.tracks[i].selected = e.target.checked;
   if (e.target.classList.contains('cand')) {
-    const t = list.tracks[i];
-    t.videoId = e.target.value;
-    t.videoTitle = t.candidates.find((c) => c.id === t.videoId)?.title;
-    t.manual = true;
+    selectCandidate(list.tracks[i], e.target.value);
   }
   renderList();
 });
@@ -145,27 +147,30 @@ $('#trackBody').addEventListener('click', async (e) => {
     list.tracks.splice(i, 1);
     renderList();
   } else if (btn.dataset.act === 'url') {
-    const url = prompt(`YouTube-Link für „${t.artist} – ${t.title}“:`, t.videoId ? `https://www.youtube.com/watch?v=${t.videoId}` : '');
+    const url = prompt(`YouTube- oder SoundCloud-Link für „${t.artist} – ${t.title}“:`, t.sourceUrl || (t.videoId ? `https://www.youtube.com/watch?v=${t.videoId}` : ''));
     if (url === null) return;
     const id = ytId(url.trim());
-    if (!url.trim()) { t.videoId = null; t.candidates = null; }
-    else if (!id) return toast('Ungültiger YouTube-Link', true);
-    else { t.videoId = id; t.videoTitle = url.trim(); t.candidates = null; }
+    if (!url.trim()) { t.videoId = null; t.sourceUrl = null; t.candidates = null; }
+    else if (scLink(url)) Object.assign(t, { sourceUrl: url.trim(), videoId: null, videoTitle: url.trim(), candidates: null });
+    else if (!id) return toast('Ungültiger Link', true);
+    else Object.assign(t, { videoId: id, sourceUrl: null, videoTitle: url.trim(), candidates: null });
     renderList();
   } else if (btn.dataset.act === 'match') {
     await matchTracks([t]);
   } else if (btn.dataset.act === 'acceptRow') {
-    t.manual = true;
+    selectCandidate(t, t.videoId);
     renderList();
   } else if (btn.dataset.act === 'suggest') {
     openPicker(t, async (choice) => {
-      if (choice.track) {
+      if (choice.sourceUrl) {
+        Object.assign(t, { sourceUrl: choice.sourceUrl, videoTitle: choice.videoTitle, videoId: null, candidates: null, manual: true });
+      } else if (choice.track) {
         // Gewählten Spotify-Song übernehmen und neu auf YouTube suchen
-        Object.assign(t, choice.track, { videoId: null, videoTitle: null, candidates: null });
+        Object.assign(t, choice.track, { videoId: null, sourceUrl: null, videoTitle: null, candidates: null });
         await matchTracks([t]);
         t.manual = true;
       } else {
-        Object.assign(t, { videoId: choice.videoId, videoTitle: choice.videoTitle, manual: true });
+        Object.assign(t, { videoId: choice.videoId, sourceUrl: null, videoTitle: choice.videoTitle, manual: true });
         if (!t.candidates?.some((c) => c.id === choice.videoId)) t.candidates = null;
       }
       renderList();
@@ -184,6 +189,7 @@ async function matchTracks(tracks) {
         const { candidates } = await api('/api/match', { track: t });
         t.candidates = candidates;
         t.videoId = candidates[0]?.id || null;
+        t.sourceUrl = null;
         t.manual = false;
         t.videoTitle = candidates[0]?.title;
       } catch (e) {
@@ -203,7 +209,7 @@ $('#checkAll').addEventListener('change', (e) => {
 $('#listName').addEventListener('input', (e) => (list.name = e.target.value));
 
 $('#btnMatchAll').addEventListener('click', (e) =>
-  busy(e.currentTarget, () => matchTracks(list.tracks.filter((t) => t.selected && !t.videoId))),
+  busy(e.currentTarget, () => matchTracks(list.tracks.filter((t) => t.selected && !t.videoId && !t.sourceUrl))),
 );
 
 $('#btnDownload').addEventListener('click', (e) =>
@@ -211,7 +217,8 @@ $('#btnDownload').addEventListener('click', (e) =>
     const tracks = list.tracks
       .map((t, i) => ({ ...t, trackNo: i + 1 }))
       .filter((t) => t.selected)
-      .map(({ title, artist, album, genre, duration, videoId, videoTitle, trackNo, candidates, manual }) => {
+      .map(({ title, artist, album, genre, duration, videoId, sourceUrl, videoTitle, trackNo, candidates, manual }) => {
+        if (sourceUrl) return { title, artist, album, genre, duration, sourceUrl, videoTitle, trackNo };
         // Unsichere, nicht bestätigte Treffer nicht blind übernehmen – der Server fragt dann nach
         const best = candidates?.find((c) => c.id === videoId);
         if (best && !manual && !best.auto) videoId = undefined;
@@ -264,6 +271,17 @@ $('#formSpotify').addEventListener('submit', (e) => {
   busy(e.submitter, async () => setList(await api('/api/spotify', { url: $('#spotifyUrl').value })));
 });
 
+$('#formSc').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('#scInput').value.trim();
+  busy(e.submitter, async () => {
+    if (scLink(v)) return setList(await api('/api/soundcloud/load', { url: v }));
+    const r = await api('/api/soundcloud/search', { q: v });
+    if (!r.tracks.length) throw new Error('Keine Treffer auf SoundCloud');
+    setList({ ...r, tracks: r.tracks.map((t) => ({ ...t, selected: false })) });
+  });
+});
+
 $('#formYt').addEventListener('submit', (e) => {
   e.preventDefault();
   busy(e.submitter, async () => setList(await api('/api/youtube-playlist', { url: $('#ytUrl').value })));
@@ -272,6 +290,7 @@ $('#formYt').addEventListener('submit', (e) => {
 $('#formSingle').addEventListener('submit', (e) => {
   e.preventDefault();
   const tracks = $('#singleText').value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+    if (scLink(l)) return { title: l, artist: '', album: '', sourceUrl: l, videoTitle: l };
     const id = ytId(l);
     if (id && /youtu/.test(l)) return { title: l, artist: '', album: '', videoId: id, videoTitle: l };
     const m = l.match(/^(.+?)\s+[-–—]\s+(.+)$/);
@@ -534,6 +553,7 @@ async function loadSuggestions(q, initialCandidates) {
     const yt = (r.youtube.length ? r.youtube : initialCandidates || [])
       .map((c) => ({ ...c, failed: pickerFailed.has(c.id) }))
       .sort((a, b) => a.failed - b.failed);
+    const sc = (r.soundcloud || []).map((c) => ({ ...c, failed: pickerFailed.has(c.id) })).sort((a, b) => a.failed - b.failed);
     let html = '<div class="result-group"><h3>Spotify</h3>';
     if (!r.spotify.available) {
       html += '<p class="hint">Für Spotify-Vorschläge in den Einstellungen Spotify-API-Zugangsdaten hinterlegen. Unten stehen die YouTube-Vorschläge.</p>';
@@ -566,6 +586,19 @@ async function loadSuggestions(q, initialCandidates) {
         </button>`,
         )
         .join('') || '<span class="muted">Keine Treffer</span>';
+    html += '</div></div><div class="result-group"><h3>SoundCloud</h3><div class="song-list">';
+    html +=
+      sc
+        .map(
+          (c, i) => `
+        <button class="song" data-sc="${i}">
+          ${c.cover ? `<img src="${esc(c.cover)}" alt="" loading="lazy">` : '<span class="ph">☁</span>'}
+          <span><span class="t">${esc(c.title)}</span><br><span class="o">${c.failed ? '<span class="uncertain">⚠ fehlgeschlagen</span> · ' : ''}${esc(c.channel)}
+            · <a href="${esc(c.url)}" target="_blank" rel="noopener">ansehen</a></span></span>
+          <span class="d">${fmtDur(c.duration)}</span>
+        </button>`,
+        )
+        .join('') || '<span class="muted">Keine Treffer</span>';
     html += '</div></div>';
     box.innerHTML = html;
     box.onclick = (e) => {
@@ -576,6 +609,9 @@ async function loadSuggestions(q, initialCandidates) {
       if (b.dataset.sp !== undefined) {
         const t = r.spotify.results[Number(b.dataset.sp)];
         choice = { track: { title: t.title, artist: t.artist, album: t.album, duration: t.duration } };
+      } else if (b.dataset.sc !== undefined) {
+        const c = sc[Number(b.dataset.sc)];
+        choice = { sourceUrl: c.url, videoTitle: c.title };
       } else {
         const c = yt[Number(b.dataset.yt)];
         choice = { videoId: c.id, videoTitle: c.title };
@@ -591,7 +627,12 @@ async function loadSuggestions(q, initialCandidates) {
 $('#pickerForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const q = $('#pickerQuery').value.trim();
-  // Eingefügter YouTube-Link wird direkt als Quelle übernommen
+  // Eingefügter YouTube- oder SoundCloud-Link wird direkt als Quelle übernommen
+  if (scLink(q)) {
+    picker.close();
+    pickerDone?.({ sourceUrl: q, videoTitle: q });
+    return;
+  }
   const id = /youtu/.test(q) ? ytId(q) : null;
   if (id) {
     picker.close();
@@ -946,13 +987,21 @@ $('#btnCookieFile').addEventListener('click', (e) =>
 // Auswahlliste der Treffer, getrennt nach YouTube Music und normalen YouTube-Videos
 function candidateOptions(t) {
   const opt = (c) =>
-    `<option value="${c.id}" ${c.id === t.videoId ? 'selected' : ''}>${c.auto ? '✔ ' : ''}${esc(c.title)}${c.source === 'youtube' && c.channel ? ' · ' + esc(c.channel) : ''}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</option>`;
+    `<option value="${c.id}" ${c.id === t.videoId ? 'selected' : ''}>${c.auto ? '✔ ' : ''}${esc(c.title)}${c.source !== 'ytmusic' && c.channel ? ' · ' + esc(c.channel) : ''}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</option>`;
   const music = t.candidates.filter((c) => c.source === 'ytmusic');
-  const videos = t.candidates.filter((c) => c.source !== 'ytmusic');
+  const videos = t.candidates.filter((c) => c.source === 'youtube');
+  const sc = t.candidates.filter((c) => c.source === 'soundcloud');
   return (
     (music.length ? `<optgroup label="♪ YouTube Music">${music.map(opt).join('')}</optgroup>` : '') +
-    (videos.length ? `<optgroup label="▶ YouTube (Vorschläge)">${videos.map(opt).join('')}</optgroup>` : '')
+    (videos.length ? `<optgroup label="▶ YouTube (Vorschläge)">${videos.map(opt).join('')}</optgroup>` : '') +
+    (sc.length ? `<optgroup label="☁ SoundCloud (Vorschläge)">${sc.map(opt).join('')}</optgroup>` : '')
   );
+}
+
+// Treffer aus der Auswahlliste übernehmen – SoundCloud-Einträge laufen über ihren Link
+function selectCandidate(t, id) {
+  const c = t.candidates.find((x) => x.id === id);
+  Object.assign(t, { videoId: id, videoTitle: c?.title, sourceUrl: c?.source === 'soundcloud' ? c.url : null, manual: true });
 }
 
 // ---------- "Bei YouTube anmelden" ----------

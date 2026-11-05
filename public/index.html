@@ -44,6 +44,7 @@
         <button class="tab" data-tab="spotify">🎵 Spotify-Link</button>
         <button class="tab" data-tab="search">🔎 Playlists finden</button>
         <button class="tab" data-tab="ytpl">▶ YouTube-Playlist</button>
+        <button class="tab" data-tab="soundcloud">☁ SoundCloud</button>
         <button class="tab" data-tab="single">✚ Einzelne Songs</button>
       </nav>
 
@@ -74,6 +75,14 @@
           <button type="submit">Suchen</button>
         </form>
         <div id="searchResults"></div>
+      </div>
+
+      <div class="tab-panel" data-panel="soundcloud">
+        <form class="row" id="formSc">
+          <input id="scInput" placeholder="SoundCloud-Link (Track, Playlist, Album, Profil, Likes) oder Suchbegriff" required />
+          <button type="submit">Laden</button>
+        </form>
+        <p class="hint">Playlists werden komplett geladen und landen in einem eigenen Unterordner; bei großen Playlists dauert das etwa eine halbe Sekunde pro Titel. Suchergebnisse landen unmarkiert in der Liste, damit du auswählen kannst. Kopiergeschützte Titel (DRM) und 30-Sekunden-Vorschauen von Go+-Titeln lassen sich nicht laden.</p>
       </div>
 
       <div class="tab-panel" data-panel="ytpl">
